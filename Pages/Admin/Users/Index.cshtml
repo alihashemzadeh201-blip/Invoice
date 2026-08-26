@@ -1,0 +1,50 @@
+﻿@page
+@model Invoice.Pages.Admin.Users.IndexModel
+@{
+    ViewBag.Title = "مدیریت کاربران";
+    Layout = "~/Pages/Shared/_layout.cshtml";
+
+}
+<a class="btn btn-info" asp-page="AddUser">کاربر جدید</a>
+<form method="post">
+    <div class="input-group mt-3">
+        <input type="text" class="form-control" asp-for="Search" />
+        <button class="input-group-text"><i class="fa fa-search"></i></button>
+    </div>
+</form>
+<div class="table-responsive">
+    <table class="mt-3 table table-hover table-striped">
+        <thead>
+            <tr>
+                <td>نام کاربری</td>
+                <td>نام</td>
+                <td>نام خانوادگی</td>
+                <td>شماره اقتصادی</td>
+                <td>نقش</td>
+                <td>تاریخ ثبت نام</td>
+                <td>تاریخ اعتبار</td>
+                <td></td>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in Model.Users)
+            {
+                <tr>
+                    <td>@item.Username</td>
+                    <td>@item.Profile?.FirstName</td>
+                    <td>@item.Profile?.Lastname</td>
+                    <td>@item.Profile?.TinCode</td>
+                    <td>@item.Role</td>
+                    <td>@MyDate.GetPersianDate(item.RegisterDate)</td>
+                    <td>@MyDate.GetPersianDate(item.ExpireDate)</td>
+                    <td>
+                        <a asp-page="SetExpire" asp-route-username="@item.Username" class="btn btn-outline-info">تمدید</a>
+                        <a asp-page="AddUser" asp-route-username="@item.Username"><span class="fa fa-edit"></span></a>
+                        <a asp-page-handler="Delete" asp-route-username="@item.Username" onclick="return confirm('@Messages.DeleteConfirm')"><span class="fa fa-remove"></span></a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+
+    </table>
+</div>

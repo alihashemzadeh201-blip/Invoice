@@ -1,0 +1,436 @@
+﻿@inject Invoice.Code.ISelectedProfile profile
+@inject Invoice.Code.IScopedFields fields
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - سامانه صدور فاکتور </title>
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link href="~/lib/bootstrap-rtl/css/bootstrap-rtl.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/pwa.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/loading.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/Invoice.styles.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/lib/fontawesome/css/all.min.css">
+    <link href="~/lib/date-picker/css/persianDatepicker-default.css" rel="stylesheet" />
+    <link href="~/lib/search-select/select2.min.css" rel="stylesheet" />
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#667eea">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="صورتحساب">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="apple-touch-icon" href="/images/icons/icon-192x192.png">
+
+    <!-- iOS Splash Screens -->
+    <link rel="apple-touch-startup-image" href="/images/splash/ios-splash-2048-2732.png" media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2)">
+    <link rel="apple-touch-startup-image" href="/images/splash/ios-splash-1668-2388.png" media="(device-width: 834px) and (device-height: 1194px) and (-webkit-device-pixel-ratio: 2)">
+    <link rel="apple-touch-startup-image" href="/images/splash/ios-splash-1536-2048.png" media="(device-width: 768px) and (device-height: 1024px) and (-webkit-device-pixel-ratio: 2)">
+    <link rel="apple-touch-startup-image" href="/images/splash/ios-splash-1125-2436.png" media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3)">
+    <link rel="apple-touch-startup-image" href="/images/splash/ios-splash-1242-2688.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3)">
+    <link rel="apple-touch-startup-image" href="/images/splash/ios-splash-828-1792.png" media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2)">
+    <link rel="apple-touch-startup-image" href="/images/splash/ios-splash-1242-2208.png" media="(device-width: 414px) and (device-height: 736px) and (-webkit-device-pixel-ratio: 3)">
+    <link rel="apple-touch-startup-image" href="/images/splash/ios-splash-750-1334.png" media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2)">
+    <link rel="apple-touch-startup-image" href="/images/splash/ios-splash-640-1136.png" media="(device-width: 320px) and (device-height: 568px) and (-webkit-device-pixel-ratio: 2)">
+
+    <!-- PWA Scripts -->
+    <script src="/js/pwa-register.js" defer></script>
+</head>
+<body>
+    <!-- Mobile Menu Overlay -->
+    <div class="mobile-menu-overlay" id="mobileMenuOverlay"></div>
+
+    <!-- Sidebar -->
+    <aside class="@(fields.MenuOpen?"sidebar sidebar-open":"sidebar")" id="sidebar">
+        <div class="sidebar-header">
+            <a href="/">
+                <img src="~/images/logo.png" alt="Logo" />
+                <span class="logo-text">صدور فاکتور </span>
+            </a>
+        </div>
+
+        <ul class="sidebar-menu">
+            @if (User.IsInRole("reseller"))
+            {
+                <li class="menu-item">
+                    <form method="post" id="profileForm" asp-page="/Index" asp-page-handler="SelectProfile">
+                        <div class="selected-profile-info" title="@profile.Profile">
+                            <div class="profile-selector-header">
+                                <span class="menu-icon"><i class="fas fa-building"></i></span>
+                                <span class="menu-text profile-label">پروفایل فعال</span>
+                            </div>
+                            <select class="profile-select" name="selectedProfileId" onchange="document.getElementById('profileForm').submit()">
+                                @foreach (var p in profile.GetProfiles(User.Identity.Name))
+                                {
+                                    <option value="@p.Id" selected="@(p.Id == profile.ProfileId)">@p.DisplayName</option>
+                                }
+                            </select>
+                        </div>
+                    </form>
+                </li>
+                @*@if (profile.ProfileId!=null)
+                    {
+                        <li class="menu-item">
+                            <div class="selected-profile-info">
+                                <span class="menu-icon"><i class="fas fa-check-circle"></i></span>
+                                <span class="menu-text profile-name">@profile.ProfileName</span>
+                            </div>
+                        </li>
+                    }*@
+                @*<li class="menu-divider"></li>*@
+            }
+
+            @if (User.IsInRole("admin"))
+            {
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/admin/users/index" title="مدیریت کاربران">
+                        <span class="menu-icon"><i class="fas fa-users"></i></span>
+                        <span class="menu-text">مدیریت کاربران</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/admin/users/profiles" title="لیست پروفایل ها">
+                        <span class="menu-icon"><i class="fas fa-id-card"></i></span>
+                        <span class="menu-text">لیست پروفایل ها</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/admin/transaction/index" title="درخواست اعتبار">
+                        <span class="menu-icon"><i class="fas fa-credit-card"></i></span>
+                        <span class="menu-text">درخواست اعتبار</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/admin/requests/index" title="درخواست کارپوشه">
+                        <span class="menu-icon"><i class="fas fa-folder-open"></i></span>
+                        <span class="menu-text">درخواست کارپوشه</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/invoiceManage/customerledger" title="مدیریت مالی مشتریان">
+                        <span class="menu-icon"><i class="fas fa-chart-line"></i></span>
+                        <span class="menu-text">مدیریت مالی مشتریان</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/product/index" title="مدیریت کالا/خدمت">
+                        <span class="menu-icon"><i class="fas fa-box"></i></span>
+                        <span class="menu-text">مدیریت کالا/خدمت</span>
+                    </a>
+                </li>
+            }
+            else
+            {
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/invoicemanage/createheader" title="فاکتور جدید">
+                        <span class="menu-icon"><i class="fas fa-plus"></i></span>
+                        <span class="menu-text">فاکتور جدید</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/invoicemanage/ImportGroupFactor" title="ارسال گروهی">
+                        <span class="menu-icon"><i class="fas fa-layer-group-plus"></i></span>
+                        <span class="menu-text">ارسال گروهی</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/invoicemanage/index" title="لیست فاکتور">
+                        <span class="menu-icon"><i class="fas fa-file-invoice"></i></span>
+                        <span class="menu-text">لیست فاکتور</span>
+                    </a>
+                </li>
+                @if (User.IsInRole("reseller") || User.IsInRole("admin"))
+                {
+                    <li class="menu-item">
+                        <a class="menu-link" asp-area="" asp-page="/invoicemanage/customerledger" title="مدیریت مالی مشتریان">
+                            <span class="menu-icon"><i class="fas fa-chart-line"></i></span>
+                            <span class="menu-text">مدیریت مالی مشتریان</span>
+                        </a>
+                    </li>
+                }
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/invoicemanage/manualinvoicecancel" title="ابطال فاکتور">
+                        <span class="menu-icon"><i class="fas fa-ban"></i></span>
+                        <span class="menu-text">ابطال فاکتور</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/product/index" title="مدیریت کالا/خدمت">
+                        <span class="menu-icon"><i class="fas fa-box"></i></span>
+                        <span class="menu-text">مدیریت کالا/خدمت</span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/credit/vallet" title="کیف پول من">
+                        <span class="menu-icon"><i class="fas fa-wallet"></i></span>
+                        <span class="menu-text">کیف پول من</span>
+                    </a>
+                </li>
+                @if (User.IsInRole("user"))
+                {
+                    <li class="menu-item">
+                        <a class="menu-link" asp-area="" asp-page="/credit/creditrequest" title="تمدید دوره">
+                            <span class="menu-icon"><i class="fas fa-sync"></i></span>
+                            <span class="menu-text">تمدید دوره</span>
+                        </a>
+                    </li>
+                }
+
+            }
+            @if (User.IsInRole("reseller"))
+            {
+                <li class="menu-item">
+                    <a class="menu-link" asp-area="" asp-page="/admin/users/profiles" title="مدیریت پروفایل">
+                        <span class="menu-icon"><i class="fas fa-tasks"></i></span>
+                        <span class="menu-text">مدیریت پروفایل</span>
+                    </a>
+                </li>
+            }
+        </ul>
+
+        <div class="user-profile">
+            <div class="user-avatar">
+                <i class="fas fa-user"></i>
+            </div>
+            <div class="user-info">
+                <partial name="_LoginPartial" />
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="top-bar not-print">
+            <button class="mobile-menu-toggle" id="mobileMenuToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            <h1 class="page-title">
+                @ViewBag.Title
+            </h1>
+            <div class="top-actions logo">
+                <a href="/"> <img src="~/images/logo.png" alt="Logo" /></a>
+            </div>
+        </div>
+
+        <div class="content-card">
+            @RenderBody()
+            <div class="navigation-loader" id="navigationLoader">
+                <div class="navigation-backdrop"></div>
+                <div class="navigation-loader-content">
+                    <div class="nav-spinner">
+                        <div class="nav-ring"></div>
+                        <div class="nav-ring"></div>
+                        <div class="nav-ring"></div>
+                    </div>
+                    <div class="nav-text">لطفا صبر کنید...</div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="dashboard-footer not-print m-0 mt-3">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <div class="footer-title">سامانه صدور فاکتور </div>
+                    <p style="color: #718096; font-size: 0.9rem;">
+                        ارائه خدمات صدور و مدیریت فاکتور الکترونیکی
+                    </p>
+                </div>
+
+                <div class="footer-section">
+                    <div class="footer-title">تماس با ما</div>
+                    <div class="contact-item">
+                        <i class="fas fa-mobile-alt"></i>
+                        <span>09306830666</span>
+                    </div>
+                    <div class="contact-item">
+                        <i class="fas fa-phone"></i>
+                        <span>051-42631163</span>
+                    </div>
+                </div>
+
+                <div class="footer-section">
+                    <div class="footer-title">شبکه های اجتماعی</div>
+                    <div class="social-icons">
+                        <a href="https://t.me/+989354182557" target="_blank" class="telegram" title="تلگرام">
+                            <i class="fab fa-telegram"></i>
+                        </a>
+                        <a href="https://wa.me/+989354182557" target="_blank" class="whatsapp" title="واتساپ">
+                            <i class="fab fa-whatsapp"></i>
+                        </a>
+                        <a href="https://eitaa.com/+989354182557" target="_blank" class="eitaa" title="ایتا">
+                            <img src="~/images/Eitaa_Icon.png" alt="Eitaa">
+                        </a>
+                        <a href="https://rubika.ir/AliHashemi2025" target="_blank" class="rubika" title="روبیکا">
+                            <img src="~/images/Rubika_Icon.png" alt="Rubika">
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="copyright">
+                &copy; 2023 - Electronic Invoice - <a href="#">حریم خصوصی</a>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Mobile Bottom Navigation for PWA -->
+    <nav class="bottom-nav not-print">
+        <a href="/" class="bottom-nav-item @(Context.Request.Path == "/" ? "active" : "")">
+            <i class="fas fa-home"></i>
+            <span>داشبورد</span>
+        </a>
+        <a href="/invoicemanage/createheader" class="bottom-nav-item @(Context.Request.Path.StartsWithSegments("/invoicemanage/createheader", StringComparison.OrdinalIgnoreCase) ? "active" : "")">
+            <i class="fas fa-plus-circle"></i>
+            <span>فاکتور جدید</span>
+        </a>
+        <a href="/invoicemanage/index" class="bottom-nav-item @(Context.Request.Path.StartsWithSegments("/invoicemanage/index", StringComparison.OrdinalIgnoreCase) ? "active" : "")">
+            <i class="fas fa-file-invoice"></i>
+            <span>لیست فاکتورها</span>
+        </a>
+        <a href="/invoicemanage/customerledger" class="bottom-nav-item @(Context.Request.Path.StartsWithSegments("/invoicemanage/customerledger", StringComparison.OrdinalIgnoreCase) ? "active" : "")">
+            <i class="fas fa-users"></i>
+            <span>مشتریان</span>
+        </a>
+    </nav>
+
+    <script src="~/lib/jquery/dist/jquery.min.js"></script>
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/wordifyfa.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+
+    <script>
+        // Change Profile Function
+        var menuState = false;
+        function changeProfile(profileId) {
+            if (profileId) {
+                // ارسال درخواست به سرور برای تغییر پروفایل
+                fetch('/api/profile/change', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ profileId: profileId })
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // رفرش صفحه برای اعمال تغییرات
+                            window.location.reload();
+                        } else {
+                            alert('خطا در تغییر پروفایل');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('خطا در ارتباط با سرور');
+                    });
+            }
+        }
+        function setMenuState(menuState) {
+            $.ajax({
+                url: '/?handler=SetMenuState',
+                type: 'GET',
+                data: { menuState: menuState }
+            });
+        }
+        function setLoaderRight() {
+            var menuState = sidebar.classList.contains('sidebar-open');
+            var navigation = document.getElementById("navigationLoader");
+            if (menuState) navigation.style.right = "280px";
+            else navigation.style.right = "80px";
+            return menuState;
+        }
+        // Mobile menu toggle
+        document.addEventListener('DOMContentLoaded', function () {
+            const mobileMenuToggle = document.getElementById('mobileMenuToggle');
+            const sidebar = document.getElementById('sidebar');
+            const mobileMenuOverlay = document.getElementById('mobileMenuOverlay');
+            if (window.innerWidth > 768) {
+                menuState=setLoaderRight();
+            }
+
+            if (mobileMenuToggle) {
+                mobileMenuToggle.addEventListener('click', function () {
+                    if (window.innerWidth <= 768) {
+                        sidebar.classList.toggle('mobile-open');
+                        mobileMenuOverlay.classList.toggle('active');
+                    }
+                    else {
+                        sidebar.classList.toggle('sidebar-open');
+                        menuState=setLoaderRight();
+                        setMenuState(menuState);
+                    }
+                });
+
+                mobileMenuOverlay.addEventListener('click', function () {
+                    sidebar.classList.remove('mobile-open');
+                    mobileMenuOverlay.classList.remove('active');
+                });
+
+                // Close menu when clicking on a menu item
+                const menuLinks = document.querySelectorAll('.menu-link');
+                menuLinks.forEach(link => {
+                    link.addEventListener('click', function () {
+                        if (window.innerWidth <= 768) {
+                            sidebar.classList.remove('mobile-open');
+                            mobileMenuOverlay.classList.remove('active');
+                        }
+                    });
+                });
+                const profileLink = document.querySelector('.user-profile');
+                profileLink.addEventListener('click', function () {
+                    if (window.innerWidth > 768) {
+                        if (menuState == false) {
+                            sidebar.classList.toggle('sidebar-open');
+                            menuState = setLoaderRight();
+                            setMenuState(menuState);
+                        }
+                    }
+                });
+            }
+
+            // Active menu item based on current page
+            const currentPath = window.location.pathname.toLowerCase();
+            const menuLinks = document.querySelectorAll('.menu-link');
+
+            menuLinks.forEach(link => {
+                link.classList.remove('active');
+                const aspPage = link.getAttribute('asp-page');
+
+                if (aspPage && currentPath == aspPage.toLowerCase()) {
+                    link.classList.add('active');
+                }
+            });
+
+            if (!document.querySelector('.menu-link.active')) {
+                menuLinks.forEach(link => {
+                    const href = link.getAttribute('href');
+                    if (href && href !== '#' && currentPath == href.toLowerCase()) {
+                        link.classList.add('active');
+                    }
+                });
+            }
+        });
+    </script>
+
+    @await RenderSectionAsync("Scripts", required: false)
+
+    <script>
+        // نمایش Badge برای نصب PWA
+        if (window.matchMedia('(display-mode: standalone)').matches) {
+            console.log('Running as PWA');
+            // اضافه کردن badge
+            const badge = document.createElement('span');
+            badge.className = 'app-badge';
+            badge.innerHTML = '<i class="fas fa-mobile-alt"></i> نسخه اپلیکیشن';
+            document.querySelector('.page-title').appendChild(badge);
+        }
+    </script>
+</body>
+
+<!-- 2. لودینگ نیویگیشن (بین صفحات) -->
+
+</html>

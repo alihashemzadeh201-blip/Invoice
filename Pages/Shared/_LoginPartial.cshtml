@@ -1,0 +1,25 @@
+﻿@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@inject Invoices.Models.DataContext Context
+        <i class="oi oi-person float-left mr-2 text-danger"></i>
+        @if (User.Identity.IsAuthenticated)
+        {
+            var user = Context.Users.Include(prop=>prop.Profile).SingleOrDefault(predicate => predicate.Username == User.Identity.Name);
+           
+                <form class="form-inline" asp-page="/Account/Logout" asp-route-returnUrl="/Index">
+                    <div class="mr-2 d-flex">
+                        <a href='@(User.IsInRole("admin")?"/Admin/Users/Index": "/account/userprofile")' title="پروفایل"> @(user.Profile==null?User.Identity.Name:user.DisplayName)</a>
+                        <button type="submit" class="border-0 bg-transparent fa fa-sign-out text-danger me-2"></button>
+                    </div>
+                </form>
+        }
+        else
+        {
+            @*<div class="mr-3">
+                <a class="register-button" asp-page="/Account/Register"> ثبت نام </a>
+            </div>*@
+            <div class="d-flex">
+                <a asp-page="/Account/Login" class="btn btn-danger">ورود</a>
+                <a asp-page="/Account/Register" class="btn btn-outline-light me-2">ثبت نام</a>
+            </div>
+        }

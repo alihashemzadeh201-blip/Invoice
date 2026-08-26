@@ -1,0 +1,65 @@
+﻿@page
+@inject Invoice.Code.ISelectedProfile profile
+@model Invoice.Pages.InvoiceManage.ImportGroupFactorConfirm
+@{
+    ViewBag.Title = "ارسال گروهی فاکتور";
+
+}
+@if (TempData.ContainsKey("SuccessMessage"))
+{
+    <div class="alert alert-success">
+        @Html.Raw(TempData["SuccessMessage"])
+    </div>
+}
+@if (TempData.ContainsKey("WarningMessage"))
+{
+    <div class="alert alert-danger">
+        @Html.Raw(TempData["WarningMessage"])
+    </div>
+   
+}
+
+<div class="table table-responsive">
+    <table class="table table-hover mt-3">
+        <thead>
+            <tr>
+                <td>ردیف</td>
+                <td>نوع فاکتور</td>
+                <td>الگو</td>
+                <td>نوع خریدار</td>
+                <td>کد اقتصادی خریدار</td>
+                <td>نوع خرید</td>
+                <td>مجموع فاکتور</td>
+                <td></td>
+            </tr>
+        </thead>
+        <tbody>
+            @{ var index = 1;}
+            @foreach (var item in Model.Invoices)
+            {
+                <tr>
+                    <td>@(index++)</td>
+                    <td>@item.Inty</td>
+                    <td>@item.Inp</td>
+                    <td>@item.Tob</td>
+                    <td>@item.Tinb</td>
+                    <td>@item.Setm</td>
+                    <td>@item.Tbill</td>
+                    <td>
+                        <a asp-page="InvoiceConfirm" asp-route-id="@item.Id" asp-route-returnurl="/invoicemanage/importgroupfactorconfirm"><span class="fa fa-eye"></span></a>
+                        <a asp-page-handler="delete" asp-route-id="@item.Id"><span class="fa fa-trash"></span></a>
+
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+<div class="bottom-buttons">
+    @if (Model.Invoices.Count > 0)
+    {
+        <a class="btn btn-success" asp-page-handler="send" onclick="return confirm('آیا مطمئنید که میخواهید همه این فاکتور ها را ارسال کنید؟')">تایید و ارسال</a>
+        <a class="btn btn-danger" asp-page-handler="cancel">لغو</a>
+    }
+    <a class="btn btn-outline-secondary float-start" href="/InvoiceManage/ImportGroupFactor?step=4"> بازگشت <span class="fa fa-chevron-left float-start"></span></a>
+</div>

@@ -1,0 +1,58 @@
+﻿@page
+@model Invoice.Pages_Admin_KarpooshehRequest.DetailsModel
+
+@{
+    ViewBag.Title = "مشخصات کالا/خدمت";
+}
+
+    <dl class="row">
+        <dt class="col-sm-2">
+            @Html.DisplayNameFor(model => model.KarpooshehRequest.NationalId)
+        </dt>
+        <dd class="col-sm-10">
+            @Html.DisplayFor(model => model.KarpooshehRequest.NationalId)
+        </dd>
+    <dt class="col-sm-2">
+        @Html.DisplayNameFor(model => model.KarpooshehRequest.Name)
+    </dt>
+    <dd class="col-sm-10">
+        @Html.DisplayFor(model => model.KarpooshehRequest.Name)
+    </dd>
+        <dt class="col-sm-2">
+            نام عمومی
+        </dt>
+        <dd class="col-sm-10">
+            @Html.DisplayFor(model => model.KarpooshehRequest.LatinName)
+        </dd>
+    <dt class="col-sm-2">
+        @Html.DisplayNameFor(model => model.KarpooshehRequest.Phone)
+    </dt>
+    <dd class="col-sm-10">
+        @Html.DisplayFor(model => model.KarpooshehRequest.Phone)
+    </dd>
+        <dt class="col-sm-2">
+            @Html.DisplayNameFor(model => model.KarpooshehRequest.Email)
+        </dt>
+        <dd class="col-sm-10">
+            @Html.DisplayFor(model => model.KarpooshehRequest.Email)
+        </dd>
+        <dt class="col-sm-2">
+            @Html.DisplayNameFor(model => model.KarpooshehRequest.PersonType)
+        </dt>
+        <dd class="col-sm-10">
+            @Html.DisplayFor(model => model.KarpooshehRequest.PersonType)
+        </dd>
+        <dt class="col-sm-2">
+            @Html.DisplayNameFor(model => model.KarpooshehRequest.JobTitle)
+        </dt>
+        <dd class="col-sm-10">
+            @Html.DisplayFor(model => model.KarpooshehRequest.JobTitle)
+        </dd>
+  <dt class="col-sm-2">
+            @Html.DisplayNameFor(model => model.KarpooshehRequest.Description)
+        </dt>
+        <dd class="col-sm-10">
+            @Html.DisplayFor(model => model.KarpooshehRequest.Description)
+        </dd>
+   
+    </dl>

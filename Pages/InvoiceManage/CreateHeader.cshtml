@@ -1,0 +1,290 @@
+﻿@page
+@inject Invoice.Code.ISelectedProfile profile
+@model Invoices.Pages.InvoiceManage.CreateModel
+
+@{
+    ViewData["Title"] = "صدور فاکتور ";
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+}
+
+<form method="post">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    @if (Model.Invoice?.Id > 0)
+    {
+        <input type="hidden" asp-for="Invoice.Id" />
+    }
+    <input type="hidden" asp-for="Invoice.Sender" />
+    <input type="hidden" asp-for="Invoice.Ins" />
+    <input type="hidden" asp-for="Invoice.Irtaxid" />
+    <input type="hidden" asp-for="Invoice.Tins" />
+
+    <div class="group">
+
+        <div class="row">
+            @if (User.IsInRole("reseller"))
+            {
+                <div class="form-group mb-3">
+                    <lable class="form-label">پروفایل : </lable>
+                    <span class="bg-white border rounded-pill p-1 pe-4 ps-4 text-secondary">@profile.Profile</span>
+                </div>
+            }
+            @*@if (User.IsInRole("reseller"))
+        {
+            <div class="mb-3 col-md-4">
+                <label asp-for="Invoice.ProfileId" class="form-label"></label>
+                <select asp-for="Invoice.ProfileId" class="form-control search-select" asp-items="ViewBag.ProfileId"></select>
+                <span asp-validation-for="Invoice.ProfileId" class="text-danger"></span>
+            </div>
+        }
+        else*@
+            @*{*@
+            <input type="hidden" asp-for="Invoice.ProfileId" />
+            @*}*@
+            <div class="mb-3 col-md-2">
+                <label asp-for="Invoice.Indatim" class="form-label"></label>
+                <input asp-for="Invoice.InvoiceDate" class="form-control date-picker" autocomplete="off" />
+                <span asp-validation-for="Invoice.Indatim" class="text-danger"></span>
+            </div>
+
+
+
+        </div>
+        <div class="row">
+
+            @if (Model.Invoice.Ins != InvoiceTopic.ابطالی)
+            {
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Inty" class="form-label"></label>
+                    <select asp-for="Invoice.Inty" class="form-select" asp-items="Html.GetEnumSelectList<InvoiceType>()"></select>
+                    <span asp-validation-for="Invoice.Inty" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Inp" class="form-label"></label>
+                    <select asp-for="Invoice.Inp" class="form-select" asp-items="Html.GetEnumSelectList<InvoicePattern>()" onchange="syncInvoicePatternFields(this.value)"></select>
+                    <span asp-validation-for="Invoice.Inp" class="text-danger"></span>
+                </div>
+                 <div class="mb-3 col-md-2" id="crn">
+                    <label asp-for="Invoice.Crn" class="form-label"></label>
+                    <input asp-for="Invoice.Crn" class="form-control" />
+                    <span asp-validation-for="Invoice.Crn" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Setm" class="form-label"></label>
+                    <select asp-for="Invoice.Setm" class="form-select" asp-items="Html.GetEnumSelectList<CheckoutType>()" onchange="setmChange(this)"></select>
+                    <span asp-validation-for="Invoice.Setm" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-2" id="cap">
+                    <label asp-for="Invoice.Cap" class="form-label"></label>
+                    <input asp-for="Invoice.Cap" class="form-control" />
+                    <span asp-validation-for="Invoice.Cap" class="text-danger"></span>
+                </div>
+               
+                @*<div class="mb-3 col-md-2">
+                        <label asp-for="Invoice.Tax17" class="form-label"></label>
+                        <input asp-for="Invoice.Tax17" class="form-control" />
+                        <span asp-validation-for="Invoice.Tax17" class="text-danger"></span>
+                    </div>*@
+            }
+
+        </div>
+        @if (Model.Invoice.Ins != InvoiceTopic.ابطالی)
+        {
+            <div class="row mt-3" id="export-fields">
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Cdcn" class="form-label"></label>
+                    <input asp-for="Invoice.Cdcn" class="form-control" />
+                    <span asp-validation-for="Invoice.Cdcn" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.CdcdDate" class="form-label"></label>
+                    <input asp-for="Invoice.CdcdDate" class="form-control date-picker" autocomplete="off" />
+                    <span asp-validation-for="Invoice.CdcdDate" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Scln" class="form-label"></label>
+                    <input asp-for="Invoice.Scln" class="form-control" />
+                    <span asp-validation-for="Invoice.Scln" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Scc" class="form-label"></label>
+                    <input asp-for="Invoice.Scc" class="form-control" />
+                    <span asp-validation-for="Invoice.Scc" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Ft" class="form-label"></label>
+                    <select asp-for="Invoice.Ft" class="form-select" asp-items="Html.GetEnumSelectList<FlightType>()"><option value="" selected>--</option></select>
+                    <span asp-validation-for="Invoice.Ft" class="text-danger"></span>
+                </div>
+            </div>
+        }
+    </div>
+    @if (Model.Invoice.Ins != InvoiceTopic.ابطالی)
+    {
+        <div class="group mt-3">
+            <a href="#" id="toggle-extra-notes" class="text-decoration-none" onclick="toggleExtraNotes(); return false;">
+                <span class="fa fa-chevron-down"></span> توضیحات تکمیلی (یادداشت‌ها / ماده ۹)
+            </a>
+            <div id="extra-notes-fields" class="row mt-3" style="display:none">
+                <div class="mb-3 col-md-4">
+                    <label asp-for="Invoice.Nti1" class="form-label"></label>
+                    <input asp-for="Invoice.Nti1" class="form-control" maxlength="30" />
+                    <span asp-validation-for="Invoice.Nti1" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-4">
+                    <label asp-for="Invoice.Nti2" class="form-label"></label>
+                    <input asp-for="Invoice.Nti2" class="form-control" maxlength="30" />
+                    <span asp-validation-for="Invoice.Nti2" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-4 form-check pt-4 mt-2">
+                    <input type="checkbox" class="form-check-input" asp-for="Invoice.IsArticle9" />
+                    <label asp-for="Invoice.IsArticle9" class="form-check-label"></label>
+                    <span asp-validation-for="Invoice.IsArticle9" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+    }
+    @*<div class="group mt-3">
+        <label class="group-label">مشخصات فروشنده</label>
+
+        <div class="row mt-3">
+
+            <div class="mb-3  col-md-2">
+                <label asp-for="Invoice.Tins" class="form-label"></label>
+                <input asp-for="Invoice.Tins" class="form-control" />
+                <span asp-validation-for="Invoice.Tins" class="text-danger"></span>
+            </div>
+            <div class="mb-3 col-md-2">
+                <label asp-for="Invoice.Sbc" class="form-label"></label>
+                <input asp-for="Invoice.Sbc" class="form-control" />
+                <span asp-validation-for="Invoice.Sbc" class="text-danger"></span>
+            </div>
+            <div class="mb-3 col-md-1">
+                    <label asp-for="Invoice.Ft" class="form-label"></label>
+                    <select asp-for="Invoice.Ft" class="form-control" asp-items="Html.GetEnumSelectList<FlightType>()"><option value="" selected>--</option></select>
+                    <span asp-validation-for="Invoice.Ft" class="text-danger"></span>
+                </div>
+
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Scln" class="form-label"></label>
+                    <input asp-for="Invoice.Scln" class="form-control" />
+                    <span asp-validation-for="Invoice.Scln" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Scc" class="form-label"></label>
+                    <input asp-for="Invoice.Scc" class="form-control" />
+                    <span asp-validation-for="Invoice.Scc" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-3">
+                    <label asp-for="Invoice.Crn" class="form-label"></label>
+                    <input asp-for="Invoice.Crn" class="form-control" />
+                    <span asp-validation-for="Invoice.Crn" class="text-danger"></span>
+                </div>
+        </div>
+
+
+    </div>*@
+    @if (Model.Invoice.Ins != InvoiceTopic.ابطالی)
+    {
+        <div class="group mt-3">
+            <div class="row mt-3">
+
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Tob" class="form-label"></label>
+                    <select asp-for="Invoice.Tob" class="form-select" asp-items="Html.GetEnumSelectList<PersonType>()"><option value="" selected>--</option></select>
+                    <span asp-validation-for="Invoice.Tob" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-4">
+                    <label asp-for="Invoice.Bid" class="form-label"></label>
+                    <input asp-for="Invoice.Bid" class="form-control" />
+                    <span asp-validation-for="Invoice.Bid" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Tinb" class="form-label"></label>
+                    <input asp-for="Invoice.Tinb" class="form-control" />
+                    <span asp-validation-for="Invoice.Tinb" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Bpc" class="form-label"></label>
+                    <input asp-for="Invoice.Bpc" class="form-control" />
+                    <span asp-validation-for="Invoice.Bpc" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-md-2">
+                    <label asp-for="Invoice.Bbc" class="form-label"></label>
+                    <input asp-for="Invoice.Bbc" class="form-control" />
+                    <span asp-validation-for="Invoice.Bbc" class="text-danger"></span>
+                </div>
+                @*<div class="mb-3 col-md-2">
+                        <label asp-for="Invoice.Bpn" class="form-label"></label>
+                        <input asp-for="Invoice.Bpn" class="form-control" />
+                        <span asp-validation-for="Invoice.Bpn" class="text-danger"></span>
+                    </div>*@
+            </div>
+        </div>
+    }
+
+
+
+
+
+<div class="bottom-buttons">
+    <button type="submit" class="btn btn-success">ثبت و ادامه <span class="float-end fa fa-chevron-right"></span></button>
+    <a asp-page="Index" class="btn btn-outline-info float-start">بازگشت <span class="float-start fa fa-chevron-left"></a>
+
+</div>
+</form>
+
+
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+    <script>
+        function syncInvoicePatternFields(selectedValue) {
+            var patternValue = selectedValue ?? $('#Invoice_Inp').val();
+
+            if (patternValue == '4') {
+                $('#crn').show();
+            }
+            else {
+                $('#crn').hide();
+            }
+
+            if (patternValue == '7') {
+                $('#export-fields').show();
+            }
+            else {
+                $('#export-fields').hide();
+            }
+        }
+
+        $(document).ready(function () {
+            if ($('#Invoice_Setm').val() == 3) {
+                $('#cap').css({ 'display': 'block' });
+            }
+            else {
+                $('#cap').css({ 'display': 'none' });
+            }
+
+            syncInvoicePatternFields();
+
+            if ($('#Invoice_Nti1').val() || $('#Invoice_Nti2').val() || $('#Invoice_IsArticle9').is(':checked')) {
+                $('#extra-notes-fields').show();
+            }
+
+            $('#Invoice_Inp').on('change', function () {
+                syncInvoicePatternFields(this.value);
+            });
+        });
+        function toggleExtraNotes() {
+            $("#extra-notes-fields").slideToggle();
+        }
+        function setmChange(element) {
+            if ($(element).val() == 3) {
+                $("#cap").css({ 'display': 'block' });
+            }
+            else {
+                $("#cap").css({ 'display': 'none' });
+            }
+        }
+    </script>
+}

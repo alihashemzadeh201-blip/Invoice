@@ -1,0 +1,97 @@
+﻿@page
+@model RegisterModel
+@{
+    ViewData["Title"] = User.Identity.IsAuthenticated ? "ناحیه کاربری" : "ثبت نام";
+
+}
+
+<div class="text-center row">
+    <form asp-route-returnUrl="@Model.ReturnUrl" method="post" enctype="multipart/form-data" class="col-md-4 m-auto">
+        <input name="Input.UserType" type="hidden" id="userType" />
+        <input type="hidden" asp-for="ReturnUrl" />
+        <div asp-validation-summary="All" class="text-danger"></div>
+        <div class="row mt-2">
+            @*  <div class="form-group col-md-4">
+                <label asp-for="Input.Profile.FirstName"></label>
+                <input asp-for="Input.Profile.FirstName" class="form-control" />
+                <span asp-validation-for="Input.Profile.FirstName" class="text-danger"></span>
+            </div>
+            <div class="form-group col-md-4">
+                <label asp-for="Input.Profile.Lastname"></label>
+                <input asp-for="Input.Profile.Lastname" class="form-control" />
+                <span asp-validation-for="Input.Profile.Lastname" class="text-danger"></span>
+            </div>*@
+            @if (User.Identity.IsAuthenticated)
+            {
+                <input type="hidden" asp-for="Input.Username" />
+            }
+            else
+            {
+                <div class="form-group">
+                    <label asp-for="Input.Username"></label>
+                    <input asp-for="Input.Username" class="form-control" />
+                    <span asp-validation-for="Input.Username" class="text-danger"></span>
+                </div>
+            }
+        </div>
+        @if (User.Identity.IsAuthenticated)
+        {
+        <div class="form-group">
+            <label asp-for="Input.OldPassword"></label>
+            <input asp-for="Input.OldPassword" class="form-control" />
+            <span asp-validation-for="Input.OldPassword" class="text-danger"></span>
+        </div>
+        }
+        <div class="form-group">
+            <label asp-for="Input.Password"></label>
+            <input asp-for="Input.Password" class="form-control" />
+            <span asp-validation-for="Input.Password" class="text-danger"></span>
+        </div>
+        <div class="form-group">
+            <label asp-for="Input.ConfirmPassword"></label>
+            <input asp-for="Input.ConfirmPassword" class="form-control" />
+            <span asp-validation-for="Input.ConfirmPassword" class="text-danger"></span>
+        </div>
+        @*  <div class="row mt-2">
+            <div class="form-group col-md-8">
+                <label asp-for="Input.Profile.TinCode"></label>
+                <input asp-for="Input.Profile.TinCode" class="form-control" />
+                <span asp-validation-for="Input.Profile.TinCode" class="text-danger"></span>
+            </div>
+            @if (Model.Input?.InvoiceSent != true)
+            {
+                <div class="form-group col-md-4">
+                    <label asp-for="Input.Profile.MemoryId"></label>
+                    <input asp-for="Input.Profile.MemoryId" class="form-control" />
+                    <span asp-validation-for="Input.Profile.MemoryId" class="text-danger"></span>
+                </div>
+
+                <div class="form-group">
+                    <label asp-for="Input.Profile.PrivateKey"></label>
+                    <input type="file" asp-for="PrivateKey" class="form-control" />
+                    <span asp-validation-for="Input.Profile.PrivateKey" class="text-danger"></span>
+                </div>
+            }
+            <div class="form-group col-md-6">
+                <label asp-for="Input.Profile.InvoicePattern"></label>
+                <select asp-for="Input.Profile.InvoicePattern" class="form-control" asp-items="@Html.GetEnumSelectList<InvoicePattern>()">
+                    <option value="">--</option>
+                </select>
+                <span asp-validation-for="Input.Profile.InvoicePattern" class="text-danger"></span>
+            </div>
+            <div class="form-group col-md-6">
+                <label asp-for="Input.Profile.RepresentativeCode"></label>
+                <input asp-for="Input.Profile.RepresentativeCode" class="form-control" />
+                <span asp-validation-for="Input.Profile.RepresentativeCode" class="text-danger"></span>
+            </div>
+
+        </div>*@
+
+
+        <button id="customerBtn" type="submit" class="btn btn-success w-100 mt-3"> ثبت و ادامه</button>
+    </form>
+</div>
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+
+}

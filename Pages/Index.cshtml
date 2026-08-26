@@ -1,0 +1,176 @@
+﻿@page
+@model IndexModel
+@{
+    ViewBag.Description = "این سامانه در راستای ارائه خدمات الکترونیکی مالیاتی ایجاد شده است. مودیان محترمی که موظف به ثبت اطلاعات فروش خود و صدور فاکتور الکترونیکی می باشند، می‌توانند  نسبت به صدور فاکتور و ارسال اطلاعات فروش خود ، از طریق این سامانه به سازمان امور مالیاتی اقدام کنند.";
+    ViewBag.KeyWords = "صدور فاکتور الکترونیکی , سامانه مودیان , شناسه یکتای حافظه مالیاتی , کلید خصوصی , کلید عمومی , کارپوشه مودیان , اداره امورمالیاتی , مالیات , صدور فاکتور , ثبت فروش";
+    ViewBag.Title = "صدور صورتحساب الکترونیکی";
+}
+
+<div class="text-center mt-4">
+    @if (!User.Identity.IsAuthenticated)
+    {
+        @*<h1 class="strong text-danger h3">سامانه صدور صورت حساب الکترونیک</h1>*@
+        <img src="/images/invoice.jpg" class="mw-100" />
+        <p class="text-justify mt-5 text-column">
+            این سامانه در راستای ارائه خدمات الکترونیکی مالیاتی ایجاد شده است. مودیان محترمی که موظف به ثبت اطلاعات فروش خود و صدور فاکتور الکترونیکی می باشند، می‌توانند  نسبت به صدور فاکتور و ارسال اطلاعات فروش خود ، از طریق این سامانه به سازمان امور مالیاتی اقدام کنند.
+        </p>
+        <div class="text-justify mt-3 text-column text-end">
+            <p class='strong text-danger'>مراحل ارسال فاکتور</p>
+            <ol>
+                <li>
+                    <span class="strong">اخذ کلید خصوصی و عمومی از مراکز میانی:</span> <br /> شما می توانید با مراجعه به یکی از سایت های تولید گواهی امضا مانند<a href="https://csr.orash.ir/" target="_blank">csr.orash.ir</a> نسبت به اخذ کلید خصوصی و عمومی اقدام نمایید.
+                </li>
+                <li>
+                    <span class="strong">در خواست شناسه یکتا :</span> <br /> با مراجعه و ورود به سایت <a href="https://my.tax.gov.ir" target="_blank">کارپوشه سامانه مودیان مالیاتی</a> نسبت اخد شناسه یکتای حافظه مالیاتی اقدام نمایید. لازم به ذکر است که جهت درخواست شناسه یکتا ، کلید عمومی ضروری است.
+                    <a class="mt-2 h5 d-block" target="_blank" href="/downloads/راهنمای پایانه فروشگاهی پیاده سازی شده-آبان 1401.pdf">راهنمای اخذ شناسه یکتا</a>
+                </li>
+                <li>
+                    <span class="strong">ثبت کلید خصوصی و شناسه یکتا :</span> <br /> با مراجعه به <a href="/account/register">ناحیه کاربری</a> خود، کلید خصوص و شناسه یکتای اخذ شده را ثبت نمایید.
+                </li>
+                <li>
+                    <span class="strong">صدور فاکتور :</span> <br /> قبل از صدور فاکتور ، لطفا ابتدا دستورالعمل صدورفاکتور الکترونیکی که از طرف سازمان امورمالیاتی منتشر شده است را با دقت مطالعه نمایید.
+                    <a class="mt-2 d-block h5" target="_blank" href="/downloads/دستورالعمل صدور صورتحساب.pdf">دستورالعمل فنی صدور فاکتور الکترونیکی</a>
+                </li>
+            </ol>
+        </div>
+        <div class="mt-4">
+            دوست عزیز ! اگر انجام مراحل بالا برای شما پیچیده است ، میتوانید این کار را به ما بسپارید.
+            <div class="row">
+                <div class="mt-3 col-md-3 m-auto">
+                    <a class="btn btn-danger w-100" href="/request/requesttaxmemoryid">درخواست کلید خصوصی و شناسه یکتا</a>
+                </div>
+            </div>
+        </div>
+        <div class="mt-5 row">
+            <div class="col-md-2"></div>
+            <div class="col-md-4 mt-2">
+                <a class="btn btn-info w-100 col-md-4" href="/account/login">ورود</a>
+            </div>
+            <div class="col-md-4 mt-2">
+                <a class="btn btn-outline-info w-100 col-md-4" asp-page="/account/Register"> ثبت نام </a>
+            </div>
+            <div class="col-md-2"></div>
+        </div>
+    }
+    else
+    {
+        <!-- داشبورد مدیریت فاکتورها -->
+        <div class="dashboard-container mt-5 text-end text-column">
+            <h4 class="mb-4 text-primary"><i class="fa fa-tachometer-alt ms-2"></i> داشبورد وضعیت فاکتورها</h4>
+            
+            <div class="row mb-4">
+                <div class="col-md-3 col-6 mb-3">
+                    <div class="card bg-primary text-white text-center p-3 rounded shadow-sm h-100">
+                        <h6>کل فاکتورها</h6>
+                        <h3 class="mb-0">@Model.TotalInvoices</h3>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-3">
+                    <div class="card bg-success text-white text-center p-3 rounded shadow-sm h-100">
+                        <h6>ارسال موفق</h6>
+                        <h3 class="mb-0">@Model.SuccessInvoices</h3>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-3">
+                    <div class="card bg-danger text-white text-center p-3 rounded shadow-sm h-100">
+                        <h6>دارای خطا</h6>
+                        <h3 class="mb-0">@Model.FailedInvoices</h3>
+                    </div>
+                </div>
+                <div class="col-md-3 col-6 mb-3">
+                    <div class="card bg-warning text-dark text-center p-3 rounded shadow-sm h-100">
+                        <h6>در انتظار ارسال</h6>
+                        <h3 class="mb-0">@Model.PendingInvoices</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-6 mb-4">
+                    <div class="card shadow-sm p-3 h-100">
+                        <h5 class="text-center mb-3">وضعیت ارسال فاکتورها</h5>
+                        <canvas id="statusChart"></canvas>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-4">
+                    <div class="card shadow-sm p-3 h-100">
+                        <h5 class="text-center mb-3">نوع فاکتورها</h5>
+                        <canvas id="topicChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <hr />
+            
+            <div class="row mt-4 align-items-center">
+                <div class="col-md-6 text-center text-md-start mb-3 mb-md-0">
+                    <span class="fs-5">موجودی کیف پول شما: </span>
+                    <span class="strong text-success fs-4 me-2">@(Model.Vallet.HasValue ? Model.Vallet.Value.ToString("N0") : "0") ریال</span>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex gap-2 justify-content-center justify-content-md-end flex-wrap">
+                        <a class="btn btn-primary" href="/invoicemanage/createheader"><i class="fa fa-plus ms-1"></i> فاکتور جدید</a>
+                        <a class="btn btn-info text-white" asp-page="/credit/vallet"><i class="fa fa-wallet ms-1"></i> کیف پول</a>
+                        <a class="btn btn-outline-info" asp-page="/credit/creditrequest">تمدید دوره</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var isAuth = '@User.Identity.IsAuthenticated'.toLowerCase() === 'true';
+            if(!isAuth) return;
+
+            // تنظیم فونت برای Chart.js
+            Chart.defaults.font.family = 'Vazirmatn, Tahoma, sans-serif';
+
+            // Chart 1: Status
+            var ctxStatus = document.getElementById('statusChart').getContext('2d');
+            new Chart(ctxStatus, {
+                type: 'doughnut',
+                data: {
+                    labels: ['موفق', 'دارای خطا', 'در حال پردازش'],
+                    datasets: [{
+                        data: [@Model.SuccessInvoices, @Model.FailedInvoices, @Model.PendingInvoices],
+                        backgroundColor: ['#28a745', '#dc3545', '#ffc107'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+
+            // Chart 2: Topic
+            var ctxTopic = document.getElementById('topicChart').getContext('2d');
+            var originalCount = @Model.TotalInvoices - @Model.CorrectiveInvoices - @Model.CancelledInvoices;
+            if(originalCount < 0) originalCount = 0;
+
+            new Chart(ctxTopic, {
+                type: 'pie',
+                data: {
+                    labels: ['اصلی', 'اصلاحی', 'ابطالی'],
+                    datasets: [{
+                        data: [originalCount, @Model.CorrectiveInvoices, @Model.CancelledInvoices],
+                        backgroundColor: ['#007bff', '#17a2b8', '#6c757d'],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        });
+    </script>
+}

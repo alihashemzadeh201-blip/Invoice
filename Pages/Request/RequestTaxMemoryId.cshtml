@@ -1,0 +1,84 @@
+﻿@page
+@model Invoice.Pages.Request.RequestTaxMemoryIdModel
+@{
+    ViewBag.Title = "درخواست اخذ شناسه یکتای حافظه مالیاتی";
+}
+<div class="text-center row">
+    <div class="mt-3 text-justify col-md-4 m-auto">
+        اگر در ثبت نام سامانه مودیان و اخذ شناسه یکتا جهت صدور فاکتور الکترونیک مشکل دارید این کار را به ما بسپارید. کارشناسان ما در کوتاه ترین زمان ممکن و با کمترین هزینه صفر تا صد این کار را برای شما انجام میدهند.<br />
+        کافیست اطلاعات خود را وارد کرده و دکمه درخواست را کلیک نمایید.
+        @if (ModelState.ErrorCount > 0)
+            {
+                <div class="alert alert-danger" asp-validation-summary="All"></div>
+            }
+    <form method="post">
+        <div class="row mt-3">
+            <label class="form-check col-6">
+                <input class="form-check-input person" type="radio" value="1" checked name="Request.PersonType" />
+                <span class="form-check-label">
+                    شخص حقیقی
+                </span>
+            </label>
+            <label class="form-check col-6">
+                <input class="form-check-input person" type="radio" value="2" name="Request.PersonType" />
+                <span class="form-check-label">
+                    شخص حقوقی (شرکت)
+                </span>
+            </label>
+        </div>
+        <div class="form-group">
+            <label class="form-label" asp-for="Request.Name"></label>
+            <input class="form-control" asp-for="Request.Name" />
+            <span class="text-danger" asp-validation-for="Request.Name"></span>
+        </div>
+        @*<div class="form-group">
+            <label class="form-label" asp-for="Request.LatinName"></label>
+            <input class="form-control" asp-for="Request.LatinName" />
+            <span class="text-danger" asp-validation-for="Request.LatinName"></span>
+        </div>*@
+        <div class="form-group">
+            <label class="form-label" id="nationalid_label" asp-for="Request.NationalId"></label>
+            <input class="form-control" asp-for="Request.NationalId" />
+            <span class="text-danger" asp-validation-for="Request.NationalId"></span>
+        </div>
+        <div class="form-group">
+            <label class="form-label" id="taxPassword_label" asp-for="Request.TaxPassword"></label>
+            <input class="form-control" asp-for="Request.TaxPassword" />
+            <span class="text-danger" asp-validation-for="Request.TaxPassword"></span>
+        </div>
+        <div class="form-group">
+            <label class="form-label" asp-for="Request.Email"></label>
+            <input class="form-control" asp-for="Request.Email" />
+            <span class="text-danger" asp-validation-for="Request.Email"></span>
+        </div>
+        <div class="form-group">
+            <label class="form-label" id="jobtitle_label" asp-for="Request.JobTitle"></label>
+            <input class="form-control" asp-for="Request.JobTitle" />
+            <span class="text-danger" asp-validation-for="Request.JobTitle"></span>
+        </div>
+        <div class="form-group">
+            <label class="form-label" asp-for="Request.Phone"></label>
+            <input class="form-control" asp-for="Request.Phone" />
+            <span class="text-danger" asp-validation-for="Request.Phone"></span>
+        </div>
+        <button class="btn btn-success mt-3">ارسال درخواست</button>
+    </form>
+    </div>
+</div>
+@section Scripts{ 
+    @Html.Partial("_ValidationScriptsPartial");
+    <script>
+        $('document').ready(function () {
+            $(".person").change(function () {
+                if ($(this).attr('checked') == 'checked') {
+                    $("#nationalid_label").text("کد ملی");
+                    $("#jobtitle_label").text("عنوان شغل");
+                }
+                else {
+                    $("#nationalid_label").text("شناسه ملی");
+                    $("#jobtitle_label").text("عنوان شرکت");
+                }
+            })
+        });
+    </script>
+}

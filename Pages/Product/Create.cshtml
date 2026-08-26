@@ -1,0 +1,46 @@
+﻿@page
+@model Invoice.Pages_Product.CreateModel
+
+@{
+    ViewBag.Title = "ثبت کالا/خدمت";
+}
+
+<div class="row text-center">
+    <div class="col-md-4 m-auto">
+        <form method="post">
+            <input type="hidden" asp-for="Id"/>            
+            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <div class="form-group">
+                <label asp-for="Product.Sstt" class="control-label"></label>
+                <input asp-for="Product.Sstt" class="form-control"/>
+                <span asp-validation-for="Product.Sstt" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Product.Sstid" class="control-label"></label>
+                <input asp-for="Product.Sstid" class="form-control"  type="number"/>
+                <span asp-validation-for="Product.Sstid" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Product.Mu" class="control-label"></label>
+                <select asp-for="Product.Mu" class="form-control search-select" asp-items="@ViewBag.Measur"><option value="" selected>----</option></select>
+                <span asp-validation-for="Product.Mu" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Product.Fee" class="control-label"></label>
+                <input asp-for="Product.Fee" class="form-control"  type="number"/>
+                <span asp-validation-for="Product.Fee" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <label asp-for="Product.Vra" class="control-label"></label>
+                <select asp-for="Product.Vra" class="form-control" asp-items="@Html.GetEnumSelectList<VatRate>()"></select>
+                <span asp-validation-for="Product.Vra" class="text-danger"></span>
+            </div>
+            <div class="form-group">
+                <input type="submit" value="ثبت" class="btn btn-success" />
+            </div>
+        </form>
+    </div>
+</div>
+@section Scripts{ 
+    @Html.Partial("_ValidationScriptsPartial")
+}

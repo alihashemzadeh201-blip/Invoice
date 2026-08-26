@@ -1,0 +1,24 @@
+﻿@page
+@model Invoice.Pages.InvoiceManage.ImportInvoiceItemsModel
+@{
+    ViewBag.Title = "آپلود فایل اقلام فاکتور";
+}
+<p>ابتدا فایل نمونه را دانلود نموده و بعد از وارد کردن اطلاعات در آن ، فایل را بارگذاری نمایید.</p>
+<form method="post" enctype="multipart/form-data">
+    <input type="hidden" asp-for="InvoiceId" />
+    @if (ModelState.ErrorCount > 0)
+    {
+        <div class="alert alert-danger mt-3" asp-validation-summary="All"></div>
+    }
+    <div class="form-group">
+        <label class="form-label">فایل اکسل اقلام فاکتور</label>
+        <div class="row">
+            <div class=" col-md-10">
+        <input class="form-control" asp-for="File" accept=".xls,.xlsx" />
+            </div>
+        <a class="col-md-2" href="/files/template.xlsx">فایل نمونه</a>
+        </div>
+        <span class="text-danger" asp-validation-for="File"></span>
+    </div>
+    <button class="btn btn-success mt-3">بارگذاری <span class="fa fa-upload"></span></button>
+</form>

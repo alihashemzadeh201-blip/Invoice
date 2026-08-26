@@ -1,0 +1,25 @@
+﻿@page
+@inject Invoice.Code.ISelectedProfile profile
+@model Invoice.Pages.InvoiceManage.ManualInvoiceCancelModel
+@{
+    ViewBag.Title = "ابطال فاکتور";
+}
+<form method="post" class="import-container">
+    <div class="mt-3 group">
+        @if (User.IsInRole("reseller"))
+        {
+            <div class="form-group mb-3">
+                <lable class="form-label">پروفایل : </lable>
+                <span class="bg-white border rounded-pill p-1 pe-4 ps-4 text-secondary">@profile.Profile</span>
+            </div>
+        }
+        <p>جهت ابطال صورتحساب شماره مالیاتی صورتحساب مرجع را در کادر ذیل وارد و کلید ابطال را فشار دهید.</p>
+        <div class="form-group col-md-3">
+            <label class="form-label">شماره مالیاتی فاکتور:</label>
+            <input class="form-control" asp-for="TaxId" />
+            <span class="text-danger" asp-validation-for="TaxId"></span>
+        </div>
+        <button class="btn btn-danger mt-5" onclick="return confirm('آیا مطمئنید که میخواهید این فاکتور را ابطال کنید؟')">ابطال <i class="fas fa-ban"></i></button>
+
+    </div>
+</form>

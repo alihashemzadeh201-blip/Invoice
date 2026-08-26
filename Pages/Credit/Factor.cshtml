@@ -1,0 +1,88 @@
+﻿@page
+@model Invoice.Pages.Credit.FactorModel
+@{
+    
+}
+<div class="text-center">
+    <img src="~/images/logo.png" style="width:60px"/> <h4>سامانه صدور فاکتور</h4>
+</div>
+<div class="date">
+    <label>زمان چاپ فاکتور :</label>
+    <span class="value">@MyDate.GetPersianDate(DateTime.Now)</span>
+</div>
+<div class="border rounded p-3 mt-4">
+    <h5>مشخصات فاکتور</h5>
+    <div>
+        <label>شماره فاکتور :</label>
+        <span class="value">@Model.CreditRequest.Id</span>
+    </div>
+    <div>
+        <label>تاریخ فاکتور :</label>
+        <span class="value">@MyDate.GetPersianDate(Model.CreditRequest.Date).ToShortDateString()</span>
+    </div>
+    <div>
+        <label>وضعیت فاکتور :</label>
+        <span class="value text-success">پرداخت شده</span>
+    </div>
+</div>
+<div class="border rounded p-3 mt-3">
+    <h5> فروشنده</h5>
+    <div>
+        <label>نام :</label>
+        <span class="value">الهام</span>
+    </div>
+    <div>
+        <label>نام خانوادگی :</label>
+        <span class="value">خیرآبادی</span>
+    </div>
+    <div>
+        <label> شماره ملی :</label>
+        <span class="value">0924629797</span>
+    </div>
+    <div>
+        <label> شماره تلفن :</label>
+        <span class="value">09016300554</span>
+    </div>
+</div>
+<div class="border rounded p-3 mt-3">
+    <h5> مشتری</h5>
+    <div>
+        <label>نام :</label>
+        <span class="value">@Model.Profile.Profile.FirstName</span>
+    </div>
+    <div>
+        <label>نام خانوادگی :</label>
+        <span class="value">@Model.Profile.Profile.Lastname</span>
+    </div>
+    <div>
+        <label> شماره اقتصادی :</label>
+        <span class="value">@Model.Profile.Profile.TinCode</span>
+    </div>
+</div>
+<div class="border rounded p-3 mt-3">
+    <h5>اقلام فاکتور</h5>
+    <table class="table">
+        <thead class="bg-secondary">
+            <tr>
+                <td>دوره</td>
+                <td>مبلغ (ریال)</td>
+                <td>تاریخ انقضا</td>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>@Model.CreditRequest.Period.Title</td>
+                <td>@Model.CreditRequest.Price</td>
+                <td>@MyDate.GetPersianDate(Model.Profile.ExpireDate).ToShortDatePersianString()</td>
+            </tr>
+            <tr class="bg-secondary strong">
+                <td>جمع</td>
+                <td>@Model.CreditRequest.Price</td>
+                <td></td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+<div class="text-center not-print">
+    <a href="#" class="btn btn-success mt-3" onclick="window.print()">چاپ <span class="fa fa-print"></span></a>
+</div>

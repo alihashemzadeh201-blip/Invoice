@@ -1,0 +1,200 @@
+﻿<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>آفلاین - صدور فاکتور</title>
+    <link rel="stylesheet" href="/lib/fontawesome/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Vazir', 'Segoe UI', Tahoma, sans-serif;
+            background: linear-gradient(135deg, #e0e7ff 0%, #f3e8ff 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .offline-container {
+            background: white;
+            border-radius: 20px;
+            padding: 60px 40px;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+        }
+
+        .offline-icon {
+            font-size: 6rem;
+            color: #cbd5e0;
+            margin-bottom: 30px;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        h1 {
+            color: #2d3748;
+            font-size: 2rem;
+            margin-bottom: 15px;
+        }
+
+        p {
+            color: #718096;
+            font-size: 1.1rem;
+            line-height: 1.8;
+            margin-bottom: 30px;
+        }
+
+        .retry-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.3s;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        }
+
+            .retry-btn:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+            }
+
+            .retry-btn i {
+                margin-left: 10px;
+            }
+
+        .features {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e7ff;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin: 15px 0;
+            text-align: right;
+        }
+
+        .feature-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .feature-text {
+            flex: 1;
+            color: #4a5568;
+            font-size: 0.95rem;
+        }
+
+        @@keyframes float {
+            0%, 100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-20px);
+            }
+        }
+
+        @@media (max-width: 768px) {
+            .offline-container {
+                padding: 40px 20px;
+            }
+
+            h1 {
+                font-size: 1.5rem;
+            }
+
+            p {
+                font-size: 1rem;
+            }
+
+            .offline-icon {
+                font-size: 4rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="offline-icon">
+            <i class="fas fa-wifi-slash"></i>
+        </div>
+
+        <h1>اتصال به اینترنت برقرار نیست</h1>
+
+        <p>
+            متأسفانه در حال حاضر دسترسی به اینترنت ندارید.
+            لطفاً اتصال خود را بررسی کنید و دوباره تلاش کنید.
+        </p>
+
+        <button class="retry-btn" onclick="location.reload()">
+            <i class="fas fa-redo"></i>
+            تلاش مجدد
+        </button>
+
+        <div class="features">
+            <h3 style="color: #2d3748; margin-bottom: 20px;">امکانات آفلاین:</h3>
+
+            <div class="feature-item">
+                <div class="feature-icon">
+                    <i class="fas fa-save"></i>
+                </div>
+                <div class="feature-text">
+                    تغییرات شما به صورت آفلاین ذخیره می‌شود
+                </div>
+            </div>
+
+            <div class="feature-item">
+                <div class="feature-icon">
+                    <i class="fas fa-sync"></i>
+                </div>
+                <div class="feature-text">
+                    با برقراری اتصال، اطلاعات به صورت خودکار همگام‌سازی می‌شود
+                </div>
+            </div>
+
+            <div class="feature-item">
+                <div class="feature-icon">
+                    <i class="fas fa-eye"></i>
+                </div>
+                <div class="feature-text">
+                    می‌توانید اطلاعات ذخیره شده قبلی را مشاهده کنید
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // بررسی خودکار اتصال هر 5 ثانیه
+        setInterval(() => {
+            if (navigator.onLine) {
+                location.reload();
+            }
+        }, 5000);
+
+        // نمایش وضعیت اتصال
+        window.addEventListener('online', () => {
+            location.reload();
+        });
+    </script>
+</body>
+</html>

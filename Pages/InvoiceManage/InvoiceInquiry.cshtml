@@ -1,0 +1,20 @@
+﻿@page
+@model Invoice.Pages.InvoiceManage.InvoiceInquiryModel
+@{
+}
+<form method="post">
+    <div class="mt-3">
+        <label>شماره مالیاتی :</label>
+        <input class="form-control" asp-for="TaxId" />
+    </div>
+    <button class="btn btn-success">استعلام</button>
+</form>
+@if (Model.Invoice != null)
+{
+<div class="mt-3">
+    وضعیت : @Model.Invoice.Status
+</div>
+<div class="mt-3">
+    پیغام سامانه : @Model.Invoice.ResponseMessage
+</div>
+}

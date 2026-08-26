@@ -1,0 +1,33 @@
+﻿@page
+@model Invoice.Pages.Credit.IndexModel
+@{
+    ViewBag.Title = "سرویس ها";
+}
+<table class="table table-striped table-hover">
+    <thead class="bg-secondary text-light">
+        <tr>
+            <td>ردیف</td>
+            <td>دوره</td>
+            <td>تاریخ تمدید</td>
+            <td></td>
+        </tr>
+    </thead>
+    <tbody>
+        @{
+            var index = 1;
+        }
+        @foreach (var item in Model.Credits)
+        {
+            <tr>
+                <td>
+                   @(index++)
+                </td>
+                <td>@item.Period.Title</td>
+                <td>@MyDate.GetPersianDate(item.Date)</td>
+                <td>
+                    <a asp-page="Factor" asp-route-id="@item.Id"><span class="fa fa-print"></span> پرینت فاکتور </a>
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>

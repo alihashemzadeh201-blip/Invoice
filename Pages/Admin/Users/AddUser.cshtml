@@ -1,0 +1,53 @@
+﻿@page
+@model Invoice.Pages.Admin.Users.AddUserModel
+@{
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+    ViewBag.Title = "تعریف کابر";
+}
+
+<form method="post">
+    <input type="hidden" asp-for="Edit"/>
+    <div class="form-group">
+        <label class="form-label" asp-for="User.Username"></label>
+        @if ((Model.User?.Username ?? "") != "")
+        {
+            <input type="hidden" asp-for="User.Username" />
+            <span class="text-info">@Model.User.Username</span>
+        }
+        else
+        {
+            <input class="form-control" asp-for="User.Username" />
+            <span class="text-danger" asp-validation-for="User.Username"></span>
+        }
+    </div>
+    <div class="form-group">
+        <label class="form-label" asp-for="User.Password"></label>
+        <input class="form-control" asp-for="User.Password" />
+        <span class="text-danger" asp-validation-for="User.Password"></span>
+    </div>
+    @*<div class="form-group">
+        <label class="form-label" asp-for="User.Profile.FirstName"></label>
+        <input class="form-control" asp-for="User.Profile.FirstName" />
+        <span class="text-danger" asp-validation-for="User.Profile.FirstName"></span>
+    </div>
+    <div class="form-group">
+        <label class="form-label" asp-for="User.Profile.Lastname"></label>
+        <input class="form-control" asp-for="User.Profile.Lastname" />
+        <span class="text-danger" asp-validation-for="User.Profile.Lastname"></span>
+    </div>*@
+    <div class="form-group">
+        <label class="form-label" asp-for="User.ExpireDate"></label>
+        <input class="form-control date-picker" asp-for="User.ExpireDate" />
+        <span class="text-danger" asp-validation-for="User.ExpireDate"></span>
+    </div>
+    <div class="form-group">
+        <label class="form-label" asp-for="User.Role"></label>
+        <select class="form-control" asp-for="User.Role">
+            <option value="admin"> ادمین</option>
+            <option value="user"> کاربر</option>
+            <option value="reseller"> فروشنده</option>
+        </select>
+        <span class="text-danger" asp-validation-for="User.Role"></span>
+    </div>
+    <button class="btn btn-success">ثبت</button>
+</form>

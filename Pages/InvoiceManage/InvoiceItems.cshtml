@@ -1,0 +1,467 @@
+﻿@page
+@model Invoices.Pages.InvoiceManage.InvoiceItemsModel
+@{
+    ViewData["Title"] = "اقلام فاکتور";
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+}
+
+@*@if (Model.Invoice.Ins == InvoiceTopic.اصلی || Model.Invoice.Ins == InvoiceTopic.برگشت_از_فروش)
+    {
+        <a asp-page="additem" class="btn btn-light btn-outline-success" asp-route-invoiceid="@Model.InvoiceId"> افزودن <span class="fa fa-plus"></span></a>
+    }*@
+
+    @Utils.BeginDialog("form", "افزودن قلم")
+<form id="form" method="post" ng-submit="submit(this)">
+    <div id="app" ng-app="app" ng-controller="controller">
+
+        <div class="overlay" ng-show="auto_complete" ng-click="auto_complete=false"></div>
+
+        <div ng-if="edit">
+            <input type="text" class="d-none" asp-for="InvoiceItem.Id" ng-model="selected.id" value="" />
+            <input type="text" class="d-none" asp-for="InvoiceItem.InvoiceId" ng-model="selected.invoiceId" value="" />
+        </div>
+        <input type="hidden" asp-for="InvoiceId" />
+        <div class="row">
+            <div class="mb-3">
+                <label asp-for="InvoiceItem.Sstt" class="form-label"></label>
+                <div class="product-search-wrap">
+                    <input asp-for="InvoiceItem.Sstt" class="form-control" ng-model="selected.sstt" ng-change="sstt_change()" autocomplete="off" ng-focus="sstt_change()" onclick="this.select()" />
+                    <div class="auto-complete" ng-show="auto_complete">
+                        <div ng-repeat="item in list" class="auto-complete-item" ng-click="item_click(item)">{{item.title}}</div>
+                    </div>
+                </div>
+                <span asp-validation-for="InvoiceItem.Sstt" class="text-danger"></span>
+
+            </div>
+            <div class="mb-3">
+                <label asp-for="InvoiceItem.Sstid" class="form-label"></label>
+                <input asp-for="InvoiceItem.Sstid" class="form-control" ng-model="selected.sstid" />
+                <span asp-validation-for="InvoiceItem.Sstid" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3 col-6">
+                <label asp-for="InvoiceItem.Am" class="form-label"></label>
+                <input asp-for="InvoiceItem.Am" class="form-control" ng-model="selected.am" ng-change="updateRialValue()" />
+
+                <span asp-validation-for="InvoiceItem.Am" class="text-danger"></span>
+            </div>
+            <div class="mb-3 col-6">
+                <label asp-for="InvoiceItem.Mu" class="form-label"></label>
+                <select asp-for="InvoiceItem.Mu" class="form-control" asp-items="ViewBag.Measur" ng-model="selected.mu">
+                    <option value="" selected>--</option>
+                </select>
+                <span asp-validation-for="InvoiceItem.Mu" class="text-danger"></span>
+            </div>
+            <div class="mb-3 col-6">
+                <label asp-for="InvoiceItem.Fee" class="form-label"></label>
+                <input asp-for="InvoiceItem.Fee" class="form-control mask" ng-model="selected.fee" ng-change="updateRialValue()" />
+                <span asp-validation-for="InvoiceItem.Fee" class="text-danger"></span>
+            </div>
+            <div class="mb-3 col-6 ">
+                <label asp-for="InvoiceItem.Dis" class="form-label"></label>
+                <input asp-for="InvoiceItem.Dis" class="form-control mask" ng-model="selected.dis" />
+                <span asp-validation-for="InvoiceItem.Dis" class="text-danger"></span>
+            </div>
+            @*@if (Model.Invoice.Inp == InvoicePattern.طلا_و_جواهر)
+            {
+                <input type="hidden" asp-for="InvoiceItem.Vra" ng-model="selected.vra" />
+            }
+            else
+            {*@
+                <div class="mb-3">
+                    <label asp-for="InvoiceItem.Vra" class="form-label"></label>
+                    <select asp-for="InvoiceItem.Vra" class="form-control" asp-items="@Html.GetEnumSelectList<VatRate>()" ng-model="selected.vra"></select>
+                    <span asp-validation-for="InvoiceItem.Vra" class="text-danger"></span>
+                </div>
+            @*}*@
+        </div>
+
+        @*<div class="row mt-3">
+
+            <div class="mb-3 col-md-2">
+            <label asp-for="InvoiceItem.Odt" class="form-label"></label>
+            <input asp-for="InvoiceItem.Odt" class="form-control" />
+            <span asp-validation-for="InvoiceItem.Odt" class="text-danger"></span>
+            </div>
+            <div class="mb-3 col-md-2">
+            <label asp-for="InvoiceItem.Odr" class="form-label"></label>
+            <input asp-for="InvoiceItem.Odr" class="form-control" />
+            <span asp-validation-for="InvoiceItem.Odr" class="text-danger"></span>
+            </div>
+            <div class="mb-3 col-md-2">
+            <label asp-for="InvoiceItem.Odam" class="form-label"></label>
+            <input asp-for="InvoiceItem.Odam" class="form-control" />
+            <span asp-validation-for="InvoiceItem.Odam" class="text-danger"></span>
+            </div>
+
+            <div class="mb-3 col-md-2">
+            <label asp-for="InvoiceItem.Olt" class="form-label"></label>
+            <input asp-for="InvoiceItem.Olt" class="form-control" />
+            <span asp-validation-for="InvoiceItem.Olt" class="text-danger"></span>
+            </div>
+            <div class="mb-3 col-md-2">
+            <label asp-for="InvoiceItem.Olr" class="form-label"></label>
+            <input asp-for="InvoiceItem.Olr" class="form-control" />
+            <span asp-validation-for="InvoiceItem.Olr" class="text-danger"></span>
+            </div>
+            <div class="mb-3 col-md-2">
+            <label asp-for="InvoiceItem.Olam" class="form-label"></label>
+            <input asp-for="InvoiceItem.Olam" class="form-control" />
+            <span asp-validation-for="InvoiceItem.Olam" class="text-danger"></span>
+            </div>
+            </div>*@
+        @if (Model.Invoice.Inp == InvoicePattern.طلا_و_جواهر)
+        {
+            <div class="row">
+                <div class="mb-3 col-6">
+                    <label asp-for="InvoiceItem.Consfee" class="form-label"></label>
+                    <input asp-for="InvoiceItem.Consfee" class="form-control mask" ng-model="selected.consfee" />
+                    <span asp-validation-for="InvoiceItem.Consfee" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-6">
+                    <label asp-for="InvoiceItem.Spro" class="form-label"></label>
+                    <input asp-for="InvoiceItem.Spro" class="form-control mask" ng-model="selected.spro" />
+                    <span asp-validation-for="InvoiceItem.Spro" class="text-danger"></span>
+                </div>
+            </div>
+        }
+        @*///////////// فروش ارز /////////////*@
+        @if (Model.Invoice.Inp == InvoicePattern.فروش_ارز)
+        {
+            <div class="row">
+                <div class="mb-3 col-6">
+                    <label asp-for="InvoiceItem.Cut" class="form-label"></label>
+                    <select asp-for="InvoiceItem.Cut" class="form-control search-select" asp-items="ViewBag.CurrencyCodes" ng-model="selected.cut"><option value="" selected>--</option></select>
+                    <span asp-validation-for="InvoiceItem.Cut" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-6">
+                    <label asp-for="InvoiceItem.Exr" class="form-label"></label>
+                    <input asp-for="InvoiceItem.Exr" class="form-control mask" ng-model="selected.exr" />
+                    <span asp-validation-for="InvoiceItem.Exr" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-6">
+                    <label asp-for="InvoiceItem.Cpr" class="form-label"></label>
+                    <input asp-for="InvoiceItem.Cpr" class="form-control mask" ng-model="selected.cpr" />
+                    <span asp-validation-for="InvoiceItem.Cpr" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-6">
+                    <label asp-for="InvoiceItem.Sovat" class="form-label"></label>
+                    <input asp-for="InvoiceItem.Sovat" class="form-control mask" ng-model="selected.sovat" />
+                    <span asp-validation-for="InvoiceItem.Sovat" class="text-danger"></span>
+                </div>
+            </div>
+        }
+        @*///////////// صادرات /////////////*@
+        @if (Model.Invoice.Inp == InvoicePattern.صادرات)
+        {
+            <div class="row">
+                <div class="mb-3 col-4">
+                    <label asp-for="InvoiceItem.Nw" class="form-label"></label>
+                    <input asp-for="InvoiceItem.Nw" class="form-control mask" ng-model="selected.nw" />
+                    <span asp-validation-for="InvoiceItem.Nw" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-4">
+                    <label asp-for="InvoiceItem.Ssrv" class="form-label"></label>
+                    <input asp-for="InvoiceItem.Ssrv" class="form-control mask" ng-model="selected.ssrv" />
+                    <span asp-validation-for="InvoiceItem.Ssrv" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-4">
+                    <label asp-for="InvoiceItem.Sscv" class="form-label"></label>
+                    <input asp-for="InvoiceItem.Sscv" class="form-control mask" ng-model="selected.sscv" />
+                    <span asp-validation-for="InvoiceItem.Sscv" class="text-danger"></span>
+                </div>
+            </div>
+        }
+        @*///////////// حق العملکاری (اختیاری برای همه الگوها) /////////////*@
+        <div class="row mt-2">
+            <div class="mb-2 col-12">
+                <div class="form-check">
+                    <input type="checkbox" class="form-check-input" id="has-commission" ng-model="hasCommission">
+                    <label class="form-check-label" for="has-commission">این قلم دارای قرارداد حق‌العمل‌کاری است</label>
+                </div>
+            </div>
+            <div ng-show="hasCommission">
+                <div class="mb-3 col-6">
+                    <label asp-for="InvoiceItem.Bros" class="form-label"></label>
+                    <input asp-for="InvoiceItem.Bros" class="form-control mask" ng-model="selected.bros" />
+                    <span asp-validation-for="InvoiceItem.Bros" class="text-danger"></span>
+                </div>
+                <div class="mb-3 col-6">
+                    <label asp-for="InvoiceItem.Bsrn" class="form-label"></label>
+                    <input asp-for="InvoiceItem.Bsrn" class="form-control" ng-model="selected.bsrn" />
+                    <span asp-validation-for="InvoiceItem.Bsrn" class="text-danger"></span>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-2">
+            <button type="submit"  class="btn btn-success me-2">ثبت <i class="fas fa-save"></i></button>
+
+        </div>
+    </div>
+
+</form>
+    @Utils.EndDialog()
+    <div class="top-buttons">
+        <a class="btn btn-info" href="#" data-bs-target="#form" data-bs-toggle="modal" onclick="clearFields()"><span class="fa fa-plus"></span> افزودن</a>
+        <a class="btn btn-outline-info float-start" asp-page="ImportInvoiceItems" asp-route-invoiceid="@Model.InvoiceId">بارگذاری <span class="fa fa-file-excel"></span></a>
+
+    </div>
+    <div class="invoice-items-list mt-3">
+        @if ((Model.Invoice?.InvoiceItems?.Count ?? 0) == 0)
+        {
+            <div class="alert alert-secondary text-center">آیتمی وجود ندارد</div>
+        }
+        else
+        {
+            var index = 0;
+            <div class="row">
+            @foreach (var item in Model.Invoice.InvoiceItems)
+            {
+                index++;
+                <div class="col-md-6 col-lg-4 mb-3">
+                    <div class="card shadow-sm h-100 border-0" style="border-radius: 12px; overflow: hidden;">
+                        <div class="card-header d-flex justify-content-between align-items-center text-white" style="background: linear-gradient(45deg, #17a2b8, #138496);">
+                            <span class="fw-bold text-truncate me-2" title="@item.Sstt">
+                                <span class="badge bg-light text-info me-1">@index</span>
+                                @item.Sstt
+                            </span>
+                            <div class="d-flex flex-shrink-0">
+                                <a href="#" class="btn btn-sm btn-light text-primary mx-1 px-2" data-bs-target="#form" data-bs-toggle="modal" onclick="setFields('@item.Id','@item.InvoiceId','@item.Sstt','@item.Sstid','@item.Am','@item.Mu','@item.Fee','@item.Dis','@((int)item.Vra)','@item.Consfee','@item.Spro','@item.Cut','@item.Exr','@item.Cpr','@item.Sovat','@item.Nw','@item.Ssrv','@item.Sscv','@item.Bros','@item.Bsrn')" title="ویرایش"><i class="fa fa-edit"></i></a>
+                                @if (Model.Invoice.Ins == InvoiceTopic.اصلی || Model.Invoice.Ins == InvoiceTopic.برگشت_از_فروش)
+                                {
+                                    <a asp-page="InvoiceItems" asp-page-handler="Delete" asp-route-id="@item.Id" onclick="return confirm('@Messages.DeleteConfirm')" class="btn btn-sm btn-light text-danger px-2" title="حذف"><i class="fa fa-trash"></i></a>
+                                }
+                            </div>
+                        </div>
+                        <div class="card-body p-3 fs-6">
+                            <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                                <span class="text-secondary"><i class="fa fa-barcode me-1"></i> شناسه کالا:</span>
+                                <span class="fw-bold">@item.Sstid</span>
+                            </div>
+                            @{
+                                var measures = ViewBag.Measur as Microsoft.AspNetCore.Mvc.Rendering.SelectList;
+                                var unitTitle = measures?.FirstOrDefault(m => m.Value == item.Mu)?.Text ?? item.Mu;
+                            }
+                            <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                                <span class="text-secondary"><i class="fa fa-layer-group me-1"></i> تعداد/مقدار:</span>
+                                <span class="fw-bold">@item.Am.ToString() @unitTitle</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                                <span class="text-secondary"><i class="fa fa-tag me-1"></i> فی:</span>
+                                <span class="fw-bold">@Utils.ShowCurrencyValue(item.Fee) ریال</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2 pb-2 border-bottom text-danger">
+                                <span><i class="fa fa-minus-circle me-1"></i> تخفیف:</span>
+                                <span class="fw-bold">@Utils.ShowCurrencyValue(item.Dis) ریال</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                                <span class="text-secondary"><i class="fa fa-calculator me-1"></i> مبلغ کل:</span>
+                                <span class="fw-bold">@Utils.ShowCurrencyValue(item.Prdis) ریال</span>
+                            </div>
+                            <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                                <span class="text-secondary"><i class="fa fa-percent me-1"></i> ارزش افزوده:</span>
+                                <span class="fw-bold text-info">@Utils.ShowCurrencyValue(item.Vam) ریال</span>
+                            </div>
+                            
+                            @if (Model.Invoice.Inp == InvoicePattern.طلا_و_جواهر)
+                            {
+                                <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                                    <span class="text-secondary"><i class="fa fa-gem me-1"></i> اجرت و سود:</span>
+                                    <span class="fw-bold">@Utils.ShowCurrencyValue(item.Tcpbs) ریال</span>
+                                </div>
+                            }
+                            else if (Model.Invoice.Inp == InvoicePattern.صادرات)
+                            {
+                                <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                                    <span class="text-secondary"><i class="fa fa-money-bill-wave me-1"></i> ارزش ریالی:</span>
+                                    <span class="fw-bold">@Utils.ShowCurrencyValue(item.Ssrv) ریال</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
+                                    <span class="text-secondary"><i class="fa fa-dollar-sign me-1"></i> ارزش ارزی:</span>
+                                    <span class="fw-bold">@Utils.ShowCurrencyValue(item.Sscv)</span>
+                                </div>
+                            }
+                        </div>
+                        <div class="card-footer bg-light border-top p-3">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <span class="text-secondary fw-bold">مبلغ قابل پرداخت:</span>
+                                <span class="text-success fw-bold fs-5">@Utils.ShowCurrencyValue(item.Tsstam) ریال</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+            </div>
+        }
+    </div>
+
+    @if (Model.Invoice?.InvoiceItems?.Count > 0)
+    {
+        <div class="card shadow-sm mt-4 mb-4 border-info">
+            <div class="card-header bg-info text-white fw-bold">
+                <i class="fa fa-calculator me-1"></i> جمع کل فاکتور
+            </div>
+            <div class="card-body bg-light">
+                <div class="row text-center">
+                    <div class="col-6 col-md-3 mb-2 mb-md-0">
+                        <div class="text-secondary small">مجموع مبلغ قبل تخفیف</div>
+                        <div class="fw-bold">@Utils.ShowCurrencyValue(Model.Invoice.Tprdis) ریال</div>
+                    </div>
+                    <div class="col-6 col-md-3 mb-2 mb-md-0">
+                        <div class="text-secondary small">مجموع تخفیفات</div>
+                        <div class="fw-bold text-danger">@Utils.ShowCurrencyValue(Model.Invoice.Tdis) ریال</div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="text-secondary small">مجموع ارزش افزوده</div>
+                        <div class="fw-bold text-info">@Utils.ShowCurrencyValue(Model.Invoice.Tvam) ریال</div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="text-secondary small">جمع کل فاکتور (مبلغ نهایی)</div>
+                        <div class="fw-bold text-success fs-5">@Utils.ShowCurrencyValue(Model.Invoice.Tbill) ریال</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+<div class="bottom-buttons">
+    @if (Model.Invoice.InvoiceItems.Count > 0 || Model.Invoice.Ins == InvoiceTopic.ابطالی)
+    {
+        <a class="btn btn-info" asp-page="Payments" asp-route-invoiceid="@Model.InvoiceId"><span class="fa fa-chevron-right float-end"></span> ادامه</a>
+    }
+    <a class="btn btn-outline-secondary float-start" asp-page="CreateHeader" asp-route-id="@Model.InvoiceId">بازگشت <span class="fa fa-chevron-left float-start"></span></a>
+</div>
+@*@if (Model.Invoice.InvoiceItems.Count > 0 || Model.Invoice.Ins== InvoiceTopic.ابطالی)
+    {
+    <form method="post">
+        <input type="hidden" asp-for="InvoiceId" />
+        <a class="btn btn-success mt-4" asp-page="Payments" asp-route-invoiceid="@Model.InvoiceId">ثبت و ادامه</a>
+    </form>
+    }*@
+@section Scripts {
+    @{
+        Html.RenderPartial("_ValidationScriptsPartial");
+    }
+    <partial name="_Angular" />
+
+
+    <script>
+        angular.module("app", []).controller("controller", function ($http, $scope, $timeout) {
+            $scope.auto_complete = false;
+            $scope.selected = null;
+            $scope.edit = false;
+            $scope.hasCommission = false;
+            $scope.updateRialValue = function () {
+                if (!$scope.selected) return;
+
+                var am = parseFloat($scope.selected.am);
+                var fee = parseFloat($scope.selected.fee);
+
+                if (isNaN(am) || isNaN(fee)) {
+                    $scope.selected.ssrv = null;
+                    return;
+                }
+
+                $scope.selected.ssrv = parseFloat((am * fee).toFixed(2));
+            };
+            $scope.setFields = function (id,invoiceId, sstt, sstid, am, mu, fee, dis, vra, consfee, spro, cut, exr, cpr, sovat, nw, ssrv, sscv, bros, bsrn) {
+                $scope.selected = {
+                    id: id,
+                    invoiceId: invoiceId,
+                    sstt: sstt,
+                    sstid: sstid,
+                    fee: fee,
+                    mu: mu,
+                    am: am,
+                    dis: dis,
+                    vra: vra,
+                    consfee: consfee,
+                    spro: spro,
+                    cut: cut,
+                    exr: exr,
+                    cpr: cpr,
+                    sovat: sovat,
+                    nw: nw,
+                    ssrv: ssrv,
+                    sscv: sscv,
+                    bros: bros,
+                    bsrn: bsrn
+                };
+                $scope.hasCommission = !!(bros && bros != '0') || !!(bsrn && bsrn != '');
+                $scope.edit = true;
+                $scope.updateRialValue();
+                $timeout(function () {
+                    $('#InvoiceItem_Mu').trigger('change');
+                    $('#InvoiceItem_Vra').trigger('change');
+                    $('#InvoiceItem_Cut').trigger('change');
+                }, 0, false);
+            }
+         
+       
+            $scope.sstt_change = function () {
+                var search = $scope.selected == null ? "" : $scope.selected.sstt;
+                $http.get('/invoicemanage/invoiceitems?handler=getproducts&search=' + search).then(function (response) {
+                    $scope.list = response.data;
+                    if ($scope.list.length > 0)
+                        $scope.auto_complete = true;
+                    else
+                        $scope.auto_complete = false;
+
+                });
+            }
+            $scope.item_click = function (item) {
+                $scope.selected = item;
+                $scope.updateRialValue();
+                $timeout(function () {
+                    $('#InvoiceItem_Mu').val($scope.selected.mu).trigger('change');
+                    $('#InvoiceItem_Vra').val($scope.selected.vra).trigger('change');
+                    $('#InvoiceItem_Fee').val($scope.selected.fee);
+                    $('#InvoiceItem_Sstid').val($scope.selected.sstid);
+                    $('#InvoiceItem_Sstt').val($scope.selected.sstt);
+                    $('#InvoiceItem_Am').focus().select();
+                }, 0, false);
+                $scope.auto_complete = false;
+            }
+        });
+
+        function setFields(id, invoiceId, sstt, sstid, am, mu, fee, dis, vra, consfee, spro, cut, exr, cpr, sovat, nw, ssrv, sscv, bros, bsrn) {
+            var scope = angular.element("#app").scope();
+            scope.$apply(function () {
+                scope.setFields(id, invoiceId, sstt, sstid, am, mu, fee, dis, vra, consfee, spro, cut, exr, cpr, sovat, nw, ssrv, sscv, bros, bsrn);
+            });
+        }
+        function clearFields() {
+            var scope = angular.element("#app").scope();
+            scope.$apply(function () {
+                scope.selected = null;
+                scope.edit = false;
+                scope.hasCommission = false;
+            });
+        }
+        $(document).ready(function () {
+           
+            //$("#InvoiceItem_Sstt").select2({
+            //    tags: true,
+            //    placeholder: "انتخاب یا تایپ کنید",
+            //});
+            //$('#InvoiceItem_Sstt').on('select2:select', function (e) {
+            //    var selectedItem = e.params.data;
+            //    var sstid = selectedItem.element.dataset.sstid;
+            //    var mu = selectedItem.element.dataset.mu;
+            //    var fee = selectedItem.element.dataset.fee;
+            //    var vra = selectedItem.element.dataset.vra;
+
+            //    // Display related information
+            //    $('#InvoiceItem_Sstid').val(sstid);
+            //    $('#InvoiceItem_Mu').val(mu).trigger('change');
+            //    $('#InvoiceItem_Fee').val(fee);
+            //    $('#InvoiceItem_Vra').val(vra);
+            //    // You can fill in other related fields as needed
+            //});
+
+        });
+
+
+    </script>
+}

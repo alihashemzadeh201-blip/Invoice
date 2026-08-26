@@ -1,0 +1,52 @@
+﻿@page
+@model Invoice.Pages.Credit.CreditRequestModel
+@{
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+    ViewBag.Title = "تمدید دوره اعتبار ";
+    ViewBag.NarrowForm = true;
+}
+<div class="text-center">
+@if (Model.NoMoney)
+{
+    <div class="alert alert-warning">
+        با توجه به اینکه مبلغ تمدید دوره از میزان موجودی کیف پول شما بیشتر است لطفا نسبت به شارژ کیف پول خود اقدام نمایید.
+        <div>
+            <a asp-page="Vallet" class="btn btn-danger">شارژ کیف پول</a>
+        </div>
+    </div>
+}
+@if (Model.ExpireDate != null)
+{
+    <div class="mt-3">
+        <span class="text-danger">تاریخ انقضای دوره اعتبار شما : </span><span class="strong">@MyDate.GetPersianDate(Model.ExpireDate)</span>
+    </div>
+}
+<p class="mt-3">جهت تمدید لطفا دوره مورد نظر را انتخاب نمایید: </p>
+<form method="post">
+    <div class="m-auto">
+        <div class="group text-end">
+            @foreach (var item in Model.Periods)
+            {
+                <label class="form-check mt-3">
+                    <input class="form-check-input" type="radio" name="CreditRequest.PeriodId" value="@item.Id">
+                    <span class="form-check-label" for="flexRadioDefault1">
+                            @item.Title @if (item.LimitCount!=null)
+                            {
+                                <text> با قابلیت ارسال حداکثر @item.LimitCount فاکتور </text>
+                            }
+                            else
+                            {
+                                <text>
+                                    با قابلیت ارسال نا محدود</text>
+                            }
+                            (@Utils.GetFormatedCurrency(item.Price / 10) تومان)
+                            @*<div><small>15 درصد تخفیف اولین استفاده</small> قیمت : <span class="strong text-success">@Utils.GetFormatedCurrency(item.Price / 10 * 0.85) تومان</span></div>*@
+                    </span>
+                </label>
+            }
+        </div>
+    </div>
+    <button class="btn btn-success mt-3"> تمدید دوره</button>
+    <a class="btn btn-outline-secondary mt-3" asp-page="Index">مشاهده دوره های قبلی</a>
+</form>
+</div>

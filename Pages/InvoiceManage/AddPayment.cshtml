@@ -1,0 +1,65 @@
+﻿@page
+@model Invoice.Pages.InvoiceManage.AddPaymentModel
+@{
+    ViewBag.Title = "ثبت پرداختی";
+    Layout = "~/Pages/Shared/_layout.cshtml";
+}
+
+<form method="post">
+    <div asp-validation-summary="All" class="text-danger"></div>
+    @if (Model.Payment?.Id > 0)
+    {
+        <input type="hidden" asp-for="Payment.Id" />
+    }
+    <input type="hidden" asp-for="Payment.InvoiceId" />
+    <div class="row">
+        <div class="form-group col-md-4">
+            <label class="form-label" asp-for="Payment.Iinn"></label>
+            <input class="form-control" asp-for="Payment.Iinn" />
+            <span class="text-danger" asp-validation-for="Payment.Iinn"></span>
+        </div>
+        <div class="form-group col-md-4">
+            <label class="form-label" asp-for="Payment.Acn"></label>
+            <input class="form-control" asp-for="Payment.Acn" />
+            <span class="text-danger" asp-validation-for="Payment.Acn"></span>
+        </div>
+        <div class="form-group col-md-4">
+            <label class="form-label" asp-for="Payment.Trmn"></label>
+            <input class="form-control" asp-for="Payment.Trmn" />
+            <span class="text-danger" asp-validation-for="Payment.Trmn"></span>
+        </div>
+        <div class="form-group col-md-4">
+            <label class="form-label" asp-for="Payment.Trn"></label>
+            <input class="form-control" asp-for="Payment.Trn" />
+            <span class="text-danger" asp-validation-for="Payment.Trn"></span>
+        </div>
+        <div class="form-group col-md-4">
+            <label class="form-label" asp-for="Payment.Pcn"></label>
+            <input class="form-control" asp-for="Payment.Pcn" />
+            <span class="text-danger" asp-validation-for="Payment.Pcn"></span>
+        </div>
+        <div class="form-group col-md-4">
+            <label class="form-label" asp-for="Payment.Pid"></label>
+            <input class="form-control" asp-for="Payment.Pid" />
+            <span class="text-danger" asp-validation-for="Payment.Pid"></span>
+        </div>
+        <div class="form-group col-md-4">
+            <label class="form-label" asp-for="Payment.Pdt"></label>
+            <input class="form-control" asp-for="Payment.PayDate" class="date-picker"/>
+            <span class="text-danger" asp-validation-for="Payment.Pdt"></span>
+        </div>
+        <div class="form-group col-md-4">
+            <label class="form-label" asp-for="Payment.Pmt"></label>
+            <select class="form-control" asp-for="Payment.Pmt" asp-items="Html.GetEnumSelectList<PayType>()" >
+                <option value="">--</option>
+            </select>
+            <span class="text-danger" asp-validation-for="Payment.Pmt"></span>
+        </div>
+        <div class="form-group col-md-4">
+            <label class="form-label" asp-for="Payment.Pv"></label>
+            <input class="form-control" asp-for="Payment.Pv" />
+            <span class="text-danger" asp-validation-for="Payment.Pv"></span>
+        </div>
+    </div>
+    <button class="btn btn-success mt-3">ثبت</button> 
+</form>

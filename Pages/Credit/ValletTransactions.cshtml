@@ -1,0 +1,59 @@
+﻿@page
+@model AflakTicket.Pages.Vallet.ValletTransactionsModel
+@{
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+    ViewData["Title"] = "تراکنش ها";
+}
+@if (Model.Message != null)
+{
+        <div class='alert alert-warning'>
+        @Model.Message
+        </div>
+
+}
+
+<div class="table-responsive">
+    <table class="table table-">
+        <thead>
+            <tr class="table-success">
+                <th>
+                    @Html.DisplayNameFor(model => model.Transaction[0].Date)
+                </th>
+              
+                <th>
+                    @Html.DisplayNameFor(model => model.Transaction[0].Price)
+                </th>
+
+                <th>وضعیت</th>
+
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in Model.Transaction)
+            {
+                    <tr>
+                        <td>
+                        @MyDate.GetPersianDate(item.Date)
+                        </td>
+                      
+                        <td>
+                        @Html.DisplayFor(modelItem => item.Price)
+                        </td>
+
+                        <td>
+                       
+                            @if (item.Confirm == true)
+                            {
+                                <span class='badge bg-success'>تایید شد</span>
+                            }
+                            else
+                            {
+                                <span class='badge bg-warning'>درانتظار تایید</span>
+                            }
+                       
+                        </td>
+                    </tr>
+            }
+        </tbody>
+    </table>
+</div>

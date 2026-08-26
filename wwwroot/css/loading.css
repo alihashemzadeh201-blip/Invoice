@@ -1,0 +1,248 @@
+﻿.initial-loader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999;
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.5s ease, visibility 0.5s ease;
+}
+
+    .initial-loader.hide {
+        opacity: 0;
+        visibility: hidden;
+    }
+
+.initial-loader-content {
+    text-align: center;
+}
+
+.initial-logo {
+    width: 100px;
+    height: 100px;
+    margin-bottom: 30px;
+    animation: logoFloat 2s ease-in-out infinite;
+    filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.3));
+}
+
+@keyframes logoFloat {
+    0%, 100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-20px);
+    }
+}
+
+.initial-spinner {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    margin: 0 auto;
+}
+
+.spinner-ring-1, .spinner-ring-2, .spinner-ring-3 {
+    position: absolute;
+    border: 4px solid transparent;
+    border-radius: 50%;
+}
+
+.spinner-ring-1 {
+    width: 100%;
+    height: 100%;
+    border-top-color: rgba(255, 255, 255, 0.8);
+    animation: spin 1.5s linear infinite;
+}
+
+.spinner-ring-2 {
+    width: 80%;
+    height: 80%;
+    top: 10%;
+    left: 10%;
+    border-bottom-color: rgba(255, 255, 255, 0.6);
+    animation: spin 2s linear infinite reverse;
+}
+
+.spinner-ring-3 {
+    width: 60%;
+    height: 60%;
+    top: 20%;
+    left: 20%;
+    border-right-color: rgba(255, 255, 255, 0.4);
+    animation: spin 2.5s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.initial-text {
+    margin-top: 30px;
+    color: white;
+    font-size: 1.2rem;
+    font-weight: bold;
+}
+
+.initial-dots {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 15px;
+}
+
+    .initial-dots .dot {
+        width: 12px;
+        height: 12px;
+        background: white;
+        border-radius: 50%;
+        animation: dotBounce 1.4s ease-in-out infinite;
+    }
+
+        .initial-dots .dot:nth-child(1) {
+            animation-delay: 0s;
+        }
+
+        .initial-dots .dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .initial-dots .dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+@keyframes dotBounce {
+    0%, 80%, 100% {
+        transform: scale(0.8);
+        opacity: 0.5;
+    }
+
+    40% {
+        transform: scale(1.2);
+        opacity: 1;
+    }
+}
+
+/* ==========================================
+   2. لودینگ نیویگیشن (بین صفحات)
+   ========================================== */
+.navigation-loader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 99998;
+    display: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    opacity: 1;
+    align-items: center;
+    justify-content: center;
+}
+
+    .navigation-loader.show {
+      
+    }
+
+.navigation-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(5px);
+}
+
+.navigation-loader-content {
+    position: relative;
+    background: white;
+    border-radius: 20px;
+    padding: 40px 60px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    text-align: center;
+    animation: scaleIn 0.3s ease;
+}
+
+@keyframes scaleIn {
+    from {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.nav-spinner {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 20px;
+}
+
+.nav-ring {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border: 3px solid transparent;
+    border-radius: 50%;
+}
+
+    .nav-ring:nth-child(1) {
+        border-top-color: #667eea;
+        animation: spin 1s linear infinite;
+    }
+
+    .nav-ring:nth-child(2) {
+        border-right-color: #764ba2;
+        animation: spin 1.5s linear infinite reverse;
+    }
+
+    .nav-ring:nth-child(3) {
+        border-bottom-color: #667eea;
+        animation: spin 2s linear infinite;
+    }
+
+.nav-text {
+    color: #2d3748;
+    font-size: 1.1rem;
+    font-weight: bold;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .initial-logo {
+        width: 80px;
+        height: 80px;
+    }
+
+    .initial-spinner {
+        width: 100px;
+        height: 100px;
+    }
+
+    .navigation-loader-content {
+        padding: 30px 40px;
+    }
+
+    .nav-spinner {
+        width: 60px;
+        height: 60px;
+    }
+}

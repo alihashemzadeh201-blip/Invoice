@@ -1,0 +1,26 @@
+﻿@page
+@model Invoice.Pages.InvoiceManage.InvoiceErrorsModel
+@{
+    ViewBag.Title = "خطاهای فاکتور";
+    Layout = "~/Pages/Shared/_layout.cshtml";
+}
+
+@if (Model.Invoice.Status == InvoiceStatus.اشکال_در_صورتحساب)
+{
+    var errors = Utils.GetResponseErrors(Model.Invoice.ResponseMessage);
+    if (errors.Count > 0)
+    {
+        <div class="alert alert-danger">
+            ارسال فاکتور با خطا مواجه شد. خطاهای صورت حساب:
+            <ul>
+                @foreach (var item in errors)
+                {
+                <li>
+                    <span>کد: @item.Key </span><span class="strong">پیغام: @item.Value</span>
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+}
+<a class="mt-3 btn btn-outline-danger" asp-page="CreateHeader" asp-route-id="@Model.Invoice.Id">ویرایش فاکتور</a>

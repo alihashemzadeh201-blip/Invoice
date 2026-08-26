@@ -1,0 +1,47 @@
+﻿@page
+@model Invoices.Pages.Vallet.ValletModel
+@{
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+    ViewData["Title"] = "کیف پول";
+}
+<div class="text-center d-inline-block w-100">
+    <div class="col-md-4 float-none m-auto mb-4">
+        <div>
+            <span class='text-muted'>
+                موجودی کیف پول شما :
+            </span>
+            <p class='strong h4 mt-3 text-success'>@Utils.GetFormatedCurrency( Model.Vallet) ریال</p>
+        </div>
+
+        <div class="alert alert-info">
+            جهت شارژ کیف پول ابتدا مبلغ مورد نظر را به شماره کارت <div class="strong text-center flex-nowrap">6063-7310-5595-3393</div> به نام <span class="strong">علی هاشم زاده</span> واریز نموده و سپس مبلغ ، شماره کارت مبدا و شماره رسید واریز را در کادر ذیل وارد نموده و درخواست افزایش موجودی را کلیک نمایید.
+        </div>
+                @if (ModelState.ErrorCount > 0)
+                {
+                    <div class="alert alert-danger" asp-validation-summary="All"></div>
+                }
+                <form method="post">
+                    <input type="hidden" asp-for="Transaction.CustomerUsername" />
+                    <div class='form-group'>
+                        <label asp-for="Transaction.Price"></label>
+                        
+                            <input class='form-control currency' asp-for="Transaction.Price" />                            
+                            <div class="text-success persian-text"></div>
+                       
+                        <span asp-validation-for="Transaction.Price" class='text-danger'></span>
+                    </div>
+                    <div class='form-group'>
+                        <label asp-for="Transaction.SourceCardNumber"></label>
+                        <input class='form-control' asp-for="Transaction.SourceCardNumber" />
+                        <span asp-validation-for="Transaction.SourceCardNumber" class='text-danger'></span>
+                    </div>
+                    <div class='form-group mt-3'>
+                        <label asp-for="Transaction.BankTransactionReceipt"></label>
+                        <input class='form-control' asp-for="Transaction.BankTransactionReceipt" />
+                        <span asp-validation-for="Transaction.BankTransactionReceipt" class='text-danger'></span>
+                    </div>
+                    <button class='btn btn-success w-100 mt-3'>درخواست افزایش موجودی</button>
+                    <a class='btn btn-outline-secondary w-100 mt-3' asp-page="ValletTransactions">مشاهده درخواست ها</a>
+                </form>
+    </div>
+</div>

@@ -1,0 +1,126 @@
+﻿@model IEnumerable<Invoices.Models.Invoice> 
+@{
+    var index = 0;
+    Layout = null;
+}
+@foreach (var item in Model)
+{
+    index++;
+    <tr class="@(item.Status== InvoiceStatus.ابطال_شده || item.Status==InvoiceStatus.اصلاح_شده?"table-warning":(item.Status== InvoiceStatus.اشکال_در_صورتحساب || item.Status== InvoiceStatus.خطا_در_ارسال || item.Status== InvoiceStatus.پیدا_نشد ?"table-danger":""))">
+        <td>
+            <a asp-page="InvoiceConfirm" asp-route-id="@item.Id" asp-route-returnurl="/invoicemanage/index"><span class="fa fa-eye"></span></a>
+            <a asp-page="CreateHeader" asp-page-handler="duplicate" asp-route-id="@item.Id"> <span class="fa fa-files"></span></a>
+            <a asp-page="InvoicePrint" asp-route-id="@item.Id" asp-route-returnurl="/invoicemanage/index"> <span class="fa fa-print"></span></a>
+
+        </td>
+        <td class="d-none d-sm-table-cell">
+            @item.Taxid
+        </td>
+        <td>@item.Ins</td>
+        <td class="d-none d-sm-table-cell">@item.Bid</td>
+
+        @*<td>@item.Tprdis</td>
+            <td>@item.Tdis</td>
+            <td>@item.Tadis</td>
+            <td>@item.Tvam</td>*@
+        <td>@Utils.ShowCurrencyValue(item.Tbill)</td>
+        <td>
+            @{
+                var status = item.Status.ToString().Replace("_", " ");
+            }
+            @switch (item.Status)
+            {
+                case InvoiceStatus.موفق:
+                case InvoiceStatus.در_حال_انجام:
+                    <span class="badge bg-success">@status</span>
+                    break;
+                case InvoiceStatus.پیدا_نشد:
+                    <span class="badge bg-danger">@status</span>
+                    break;
+                case InvoiceStatus.در_حال_ارسال:
+                    <span class="badge bg-warning">@status</span>
+                    break;
+                case InvoiceStatus.خطا_در_ارسال:
+                    <span class="badge bg-danger">@status</span>
+                    break;
+                case InvoiceStatus.در_انتظار_ارسال:
+                    <span class="badge bg-warning">@status</span>
+                    break;
+                case InvoiceStatus.اشکال_در_صورتحساب:
+                    <span class="badge bg-danger">@status</span>
+                    break;
+                case InvoiceStatus.ابطال_شده:
+                    <span class="badge bg-danger">@status</span>
+                    break;
+                case InvoiceStatus.اصلاح_شده:
+                    <span class="badge bg-warning">@status</span>
+                    break;
+            }
+            @if (item.Status != InvoiceStatus.در_انتظار_ارسال && item.Status != InvoiceStatus.ابطال_شده && item.Status != InvoiceStatus.اصلاح_شده )
+            {
+                <a asp-page="CreateHeader" asp-page-handler="LastStatus" asp-route-id="@item.Id" data-id="@item.Id" class="me-2 fa fa-refresh @(item.Status == InvoiceStatus.در_حال_انجام || item.Status == InvoiceStatus.خطا_در_ارسال || item.Status == InvoiceStatus.پیدا_نشد ? "auto-refresh" : "")"> </a>
+            }
+
+        </td>
+        <td>
+            @if (item.Status == InvoiceStatus.در_انتظار_ارسال || item.Status == InvoiceStatus.اشکال_در_صورتحساب || item.Status == InvoiceStatus.خطا_در_ارسال)
+            {
+                if (item.Status == InvoiceStatus.اشکال_در_صورتحساب)
+                {
+                    <a asp-page="InvoiceErrors" asp-route-id="@item.Id" class="btn btn-outline-danger m-1">مشاهده خطاها</a>
+                }
+                else
+                {
+                    <a asp-page="InvoiceConfirm" asp-route-id="@item.Id" class="btn btn-outline-success m-1">ارسال صورتحساب</a>
+                }
+                <a asp-page="CreateHeader" asp-route-id="@item.Id" class="btn btn-outline-secondary m-1"><span class="fa fa-edit"></span>ویرایش</a>
+                <a asp-page="CreateHeader" asp-page-handler="delete" asp-route-id="@item.Id" class="btn btn-outline-danger m-1" onclick="return confirm('@Messages.DeleteConfirm')"><span class="fa fa-remove"></span>حذف</a>
+
+            }
+            else if (item.Status == InvoiceStatus.موفق || item.Status == InvoiceStatus.در_حال_انجام)
+            {
+
+                @if (item.Ins == InvoiceTopic.اصلی)
+                {
+                    <a asp-page="CreateHeader" asp-route-irtaxid="@item.Taxid" asp-route-ins="2" class="btn btn-outline-info m-1"> صدور اصلاحی</a>
+
+                }
+                else
+                {
+                    <a asp-page="InvoiceConfirm" asp-route-irtaxid="@item.Irtaxid" asp-route-returnurl="/invoicemanage/index" class="btn btn-outline-info m-1"> مشاهده مرجع</a>
+
+                }
+                if (item.Ins != InvoiceTopic.ابطالی)
+                {
+                    <a asp-page="InvoiceConfirm" asp-route-id="@item.Id" asp-route-cancelinvoice="true" class="btn btn-outline-danger m-1"> صدور ابطالی</a>
+                    <a asp-page="CreateHeader" asp-route-irtaxid="@item.Taxid" asp-route-ins="4" class="btn btn-outline-info m-1"> صدور برگشت از فروش</a>
+                }
+
+            }
+            else if (item.Status == InvoiceStatus.در_حال_ارسال)
+            {
+                @if (item.Ins != InvoiceTopic.ابطالی)
+                {
+                    <a asp-page="InvoiceConfirm" asp-route-id="@item.Id" asp-route-cancelinvoice="true" asp-route-returnurl="/invoicemanage/index" class="btn btn-outline-danger m-1"> صدور ابطالی</a>
+                }
+
+                <a asp-page="CreateHeader" asp-page-handler="delete" asp-route-id="@item.Id" class="btn btn-outline-danger m-1" onclick="return confirm('@Messages.DeleteConfirm')"><span class="fa fa-remove"></span>حذف</a>
+            }
+            else if (item.Status != InvoiceStatus.ابطال_شده && item.Status != InvoiceStatus.اصلاح_شده)
+            {
+                <a asp-page="CreateHeader" asp-page-handler="delete" asp-route-id="@item.Id" class="btn btn-outline-danger m-1" onclick="return confirm('@Messages.DeleteConfirm')"><span class="fa fa-remove"></span>حذف</a>
+            }
+            else if (item.Status == InvoiceStatus.اصلاح_شده)
+            {
+                <a asp-page="InvoiceConfirm" asp-route-id="@item.ReferalId" asp-route-returnurl="/invoicemanage/index" class="btn btn-outline-info m-1">مشاهده اصلاحی</a>
+
+            }
+            else if (item.Status == InvoiceStatus.ابطال_شده)
+            {
+                <a asp-page="InvoiceConfirm" asp-route-id="@item.ReferalId" asp-route-returnurl="/invoicemanage/index" class="btn btn-outline-info m-1">مشاهده ابطالی</a>
+
+            }
+
+        </td>
+    </tr>
+}

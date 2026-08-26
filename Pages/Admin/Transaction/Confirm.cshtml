@@ -1,0 +1,84 @@
+﻿@page
+@model AflakTicket.Pages_Admin_Transaction.ConfirmModel
+
+@{
+    ViewData["Title"] = "تایید درخواست اعتبار";
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+}
+@if(ModelState.ErrorCount>0)
+{
+    <div class='alert alert-danger' asp-validation-summary="All"></div>
+}
+<dl class="row">
+    <dt class="col-sm-2">
+        @Html.DisplayNameFor(model => model.Transaction.Date)
+    </dt>
+    <dd class="col-sm-10">
+        @Html.DisplayFor(model => model.Transaction.Date)
+    </dd>
+    
+    <dt class="col-sm-2">
+        @Html.DisplayNameFor(model => model.Transaction.Price)
+    </dt>
+    <dd class="col-sm-10">
+        @Utils.GetFormatedCurrency(Model.Transaction.Price.Value)ریال
+    </dd>
+
+    <dt class="col-sm-2">
+        @Html.DisplayNameFor(model => model.Transaction.CustomerUsername)
+    </dt>
+    <dd class="col-sm-10">
+        @Html.DisplayFor(model => model.Transaction.Customer.DisplayName)
+    </dd>
+    <dt class="col-sm-2">
+        @Html.DisplayNameFor(model => model.Transaction.SourceCardNumber)
+
+    </dt>
+    <dd class="col-sm-10">
+        @Html.DisplayFor(model => model.Transaction.SourceCardNumber)
+    </dd>
+    <dt class="col-sm-2">
+        @Html.DisplayNameFor(model => model.Transaction.BankTransactionReceipt)
+
+    </dt>
+    <dd class="col-sm-10">
+        @Html.DisplayFor(model => model.Transaction.BankTransactionReceipt)
+    </dd>
+   
+</dl>
+<div>
+    <form method="post">
+        <input type="hidden" asp-for="Transaction.Id" />
+        <div class="form-group">
+            <label asp-for="Transaction.ByCash" class="control-label"></label>
+            <select asp-for="Transaction.ByCash" class="form-control">
+                <option value="true">نقدی</option>
+                <option value="false">کارت به کارت</option>
+            </select>
+
+        </div>
+        <div id="bankcode" class="form-group">
+            <label asp-for="Transaction.BankTransactionReceipt" class="control-label"></label>
+            <input asp-for="Transaction.BankTransactionReceipt" class="form-control" />
+            <span asp-validation-for="Transaction.BankTransactionReceipt" class="text-danger"></span>
+        </div>
+        <button class='btn btn-warning mt-3'>تایید تراکنش</button>
+        <a asp-page="./Index" class='btn btn-light mt-3'>بازگشت</a>
+
+    </form>
+</div>
+@section Scripts{
+<script>
+    $("document").ready(function(){
+        $("#Transaction_ByCash").change(function(){
+            if($(this).val()=="false"){
+                $("#bankcode").removeClass("d-none");
+            }
+            else{
+                $("#bankcode").addClass("d-none");
+
+            }
+        })
+    });
+</script>
+}

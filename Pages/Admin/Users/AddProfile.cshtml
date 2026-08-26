@@ -1,0 +1,54 @@
+﻿@page
+@model Invoice.Pages.Admin.Users.AddProfileModel
+@{
+    ViewBag.Title = "تعریف پروفایل";
+}
+<form method="post" enctype="multipart/form-data">
+     @if (Model.Profile?.Id > 0)
+    {
+        <input type="hidden" asp-for="Profile.Id" />
+    }
+<div class="row">
+    <div class="form-group col-md-6">
+        <label class="form-label" asp-for="Profile.FirstName"></label>
+        <input class="form-control" asp-for="Profile.FirstName" />
+        <span class="text-danger" asp-validation-for="Profile.FirstName"></span>
+    </div>
+    <div class="form-group col-md-6">
+        <label class="form-label" asp-for="Profile.Lastname"></label>
+        <input class="form-control" asp-for="Profile.Lastname" />
+        <span class="text-danger" asp-validation-for="Profile.Lastname"></span>
+    </div>
+    <div class="form-group col-md-6">
+        <label asp-for="Profile.TinCode"></label>
+        <input asp-for="Profile.TinCode" class="form-control" />
+        <span asp-validation-for="Profile.TinCode" class="text-danger"></span>
+    </div>
+
+    <div class="form-group col-md-3">
+        <label asp-for="Profile.MemoryId"></label>
+        <input asp-for="Profile.MemoryId" class="form-control" />
+        <span asp-validation-for="Profile.MemoryId" class="text-danger"></span>
+    </div>
+    <div class="form-group col-md-3">
+        <label asp-for="Profile.BranchCode"></label>
+        <input asp-for="Profile.BranchCode" class="form-control" />
+        <span asp-validation-for="Profile.BranchCode" class="text-danger"></span>
+    </div>
+    <div class="form-group col-md-8">
+        <label asp-for="Profile.PrivateKey"></label>
+
+        <input type="file" asp-for="PrivateKey" class="form-control @(Model.Profile.PrivateKey!=null?"bg-success":"")" />
+        <span asp-validation-for="Profile.PrivateKey" class="text-danger"></span>
+    </div>
+    <div class="form-group col-md-4">
+        <label asp-for="Profile.InvoicePattern"></label>
+        <select asp-for="Profile.InvoicePattern" class="form-control" asp-items="@Html.GetEnumSelectList<InvoicePattern>()">
+            <option value="">--</option>
+        </select>
+        <span asp-validation-for="Profile.InvoicePattern" class="text-danger"></span>
+    </div>
+</div>
+    <button class="btn btn-success mt-3">ثبت</button>
+</form>
+

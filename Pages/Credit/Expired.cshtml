@@ -1,0 +1,13 @@
+﻿@page
+@model Invoice.Pages.Account.ExpiredModel
+@{
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+    ViewBag.Title = "اتمام اعتبار کاربری";
+}
+<div class="text-center">
+<h4 class="text-danger">اتمام اعتبار</h4>
+<p class="text-secondary">کاربر گرامی با توجه به اتمام مهلت اعتبار شما خواهشمند است نسبت به تمدید اعتبار و یا شارژ کیف پول خود اقدام نمایید  .</p>
+
+<a class="btn btn-info" asp-page="CreditRequest">درخواست تمدید اعتبار</a>
+<a class="btn btn-info" asp-page="Vallet">شارژ کیف پول</a>
+</div>

@@ -1,0 +1,16 @@
+﻿
+@{
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+}
+<div class="form">
+    <div class="title">
+        <span>@ViewBag.Title</span>
+    </div>
+    <div class="mt-4">
+        @RenderBody()
+    </div>
+</div>
+@section Scripts{
+    @RenderSection("Scripts",false)
+}
+

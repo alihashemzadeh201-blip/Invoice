@@ -1,0 +1,34 @@
+﻿@page
+@model Invoice.Pages.InvoiceManage.PaymentsModel
+@{
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+    ViewBag.Title = "اطلاعات پرداخت";
+}
+<a class="btn btn-outline-info" asp-page="AddPayment">پرداختی جدید <span class="fa fa-plus"></span></a>
+<table class="table table-striped table-hover mt-3">
+    <thead>
+        <tr>
+            <td>شماره پیگیری/شماره مرجع</td>
+            <td>شماره کارت پرداخت کننده  فاکتور</td>
+            <td>تاریخ و زمان پرداخت</td>
+            <td>روش پرداخت</td>
+            <td>مبلغ پرداختی</td>
+        </tr>
+    </thead>
+    <tbody>
+        @foreach (var item in Model.Payments)
+        {
+            <tr>
+                <td>@item.Trn</td>
+                <td>@item.Pcn</td>
+                <td>@item.PayDate</td>
+                <td>@item.Pmt</td>
+                <td>@Utils.ShowCurrencyValue(item.Pv)</td>
+            </tr>
+        }
+    </tbody>
+</table>
+<div class="bottom-buttons">  
+        <a class="btn btn-info" asp-page="InvoiceConfirm" asp-route-id="@Model.InvoiceId"><span class="fa fa-chevron-right float-end"></span> ادامه</a>   
+    <a class="btn btn-outline-secondary float-start" asp-page="InvoiceItems" asp-route-invoiceid="@Model.InvoiceId">بازگشت <span class="fa fa-chevron-left float-start"></span></a>
+</div>

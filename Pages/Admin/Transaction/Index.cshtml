@@ -1,0 +1,47 @@
+﻿@page
+@model Invoices.Pages_Admin_Transaction.IndexModel
+
+@{
+    ViewData["Title"] = "درخواست اعتبار";
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+}
+
+<table class="table table-striped">
+    <thead>
+        <tr class="table-success">
+            <th>
+                @Html.DisplayNameFor(model => model.Transaction[0].Date)
+            </th>
+          
+            <th>
+                @Html.DisplayNameFor(model => model.Transaction[0].Price)
+            </th>
+            <th>
+                @Html.DisplayNameFor(model => model.Transaction[0].CustomerUsername)
+            </th>
+            <th>
+            </th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+@foreach (var item in Model.Transaction) {
+        <tr>
+            <td>
+                @Html.DisplayFor(modelItem => item.Date)
+            </td>
+         
+            <td>
+                @Html.DisplayFor(modelItem => item.Price)
+            </td>
+            <td>
+                @item.Customer.DisplayName
+            </td>
+            <td>
+                <a  asp-page="Confirm" asp-route-id="@item.Id" ><span class="fa fa-eye"></span></a>
+                    <a asp-page-handler="Delete" asp-route-id="@item.Id" onclick="return confirm('@Messages.DeleteConfirm')"><span class="fa fa-remove"></span></a>
+            </td>
+        </tr>
+}
+    </tbody>
+</table>

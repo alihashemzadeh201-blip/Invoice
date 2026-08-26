@@ -1,0 +1,315 @@
+﻿@page
+@model ImportGroupFactorModel
+@{
+    ViewBag.Title = "ارسال گروهی فاکتور";
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+}
+
+<div class="import-container">
+    <!-- Step 1: Upload File -->
+    @if (Model.CurrentStep == 1)
+    {
+        
+            <div class="step-header">
+                <span class="step-number">1</span>
+                <h3>انتخاب فایل اکسل</h3>
+            </div>
+            <div class="step-body">
+                <form method="post" enctype="multipart/form-data" asp-page-handler="UploadFile">
+                    <div class="upload-area" id="uploadArea">
+                        <i class="fas fa-file-excel fa-3x text-success mb-3"></i>
+                        <p>فایل اکسل خود را اینجا بکشید یا کلیک کنید</p>
+                        <input type="file" name="excelFile" id="excelFile" accept=".xlsx,.xls" class="d-none" required>
+                        <button type="button" class="btn btn-primary mt-3" @*onclick="document.getElementById('excelFile').click()"*@>
+                            <i class="fas fa-upload"></i> انتخاب فایل
+                        </button>
+                    </div>
+                    <div id="fileName" class="file-name mt-3"></div>
+                    <button type="submit" class="btn btn-success mt-3" id="uploadBtn" style="display:none;">
+                        <i class="fas fa-check"></i> بارگذاری و ادامه
+                    </button>
+                </form>
+            </div>
+    }
+    else if (Model.CurrentStep == 2)
+    {
+            <div class="step-header">
+                <span class="step-number">2</span>
+                <h3>انتخاب یا ایجاد تمپلیت</h3>
+            </div>
+            <div class="step-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <form method="post" asp-page-handler="SelectTemplate">
+                            <div class="form-group">
+                                <label>تمپلیت های موجود</label>
+                                <select name="templateId" class="form-select">
+                                    <option value="">تمپلیت جدید ایجاد کنید...</option>
+                                    @foreach (var template in Model.Templates)
+                                    {
+                                        <option value="@template.Id" selected="@(template.Id == Model.SelectedTemplateId)">
+                                            @template.Name
+                                        </option>
+                                    }
+                                </select>
+                                <div>
+                                    <button type="button" class="btn btn-secondary mt-3" onclick="location.href='?step=1'">
+                                        <i class="fas fa-arrow-right"></i> بازگشت
+                                    </button>
+                                    <button type="submit" class="btn btn-success mt-3">
+                                        <i class="fas fa-save"></i> ذخیره  و ادامه
+                                    </button>
+                                </div>
+
+                            </div>
+                        </form>
+                    </div>
+                    <div class="col-md-6">
+                        <form method="post" asp-page-handler="CreateTemplate">
+                            <div class="form-group">
+                                <label>نام تمپلیت جدید</label>
+                                <div class="input-group">
+                                    <input type="text" name="templateName" class="form-control" placeholder="مثلاً: تمپلیت فروشگاه 1" required>
+                                    <button type="submit" class="btn btn-primary">
+                                        <i class="fas fa-plus"></i> ایجاد
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+    }
+    else if (Model.CurrentStep == 3 && Model.ExcelColumns != null)
+    {
+            <div class="step-header">
+                <span class="step-number">3</span>
+                <h3>تنظیم مپینگ ستون‌ها</h3>
+            </div>
+            <div class="step-body">
+                <form method="post" asp-page-handler="SaveMapping">
+                    <input type="hidden" name="templateId" value="@Model.SelectedTemplateId" />
+
+                    <div class="mapping-info alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        ستون‌های موجود در فایل اکسل شما را به فیلدهای سیستم متصل کنید
+                    </div>
+
+                    <div class="row">
+
+                        <div class="col-md-6">
+                            <h5 class="mb-3">فیلدهای فرم فاکتور</h5>
+                            <div class="system-fields">
+                                @{
+                                    var systemFields = Dictionaries.TemplateMappings;
+                                }
+
+                                @foreach (var field in systemFields)
+                                {
+                                    <div class="mapping-row">
+                                        <label class="field-label">
+                                            <i class="fas fa-arrow-left text-primary"></i>
+                                            @field.Value
+                                        </label>
+                                        <select name="mapping[@field.Key]" class="form-select mapping-select">
+                                            <option value="">-- انتخاب ستون --</option>
+                                            @foreach (var col in Model.ExcelColumns)
+                                            {
+                                                var selected = (Model.CurrentMapping != null && Model.CurrentMapping.ContainsKey(field.Key) && Model.CurrentMapping[field.Key] == col);
+                                                <option value="@col" selected="@selected">
+                                                    @col
+                                                </option>
+                                            }
+                                        </select>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h5 class="mb-3">ستون‌های اکسل</h5>
+                            <div class="excel-columns-preview">
+                                @foreach (var col in Model.ExcelColumns)
+                                {
+                                    <div class="excel-column-badge">
+                                        <i class="fas fa-table"></i> @col
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4">
+                        <button type="button" class="btn btn-secondary" onclick="location.href='?step=2'">
+                            <i class="fas fa-arrow-right"></i> بازگشت
+                        </button>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-save"></i> ذخیره و ادامه
+                        </button>
+                    </div>
+                </form>
+            </div>
+    }
+    else if (Model.CurrentStep == 4 && Model.PreviewData != null)
+    {
+            <div class="step-header">
+                <span class="step-number">4</span>
+                <h3>پیش‌نمایش و بارگذاری</h3>
+            </div>
+            <div class="step-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    @Model.PreviewData.Count ردیف برای بارگذاری آماده است. لطفاً اطلاعات را بررسی کنید.
+                </div>
+
+                <div class="table-responsive preview-table">
+                    <table class="table table-bordered table-hover">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ردیف</th>
+                                <th>کد فاکتور</th>
+                                <th>تاریخ</th>
+                                <th>نوع</th>
+                                <th>شناسه کالا</th>
+                                <th>شرح</th>
+                                <th>تعداد</th>
+                                <th>مبلغ واحد</th>
+                                <th>وضعیت</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int i = 0; i < Math.Min(10, Model.PreviewData.Count); i++)
+                            {
+                                var row = Model.PreviewData[i];
+                                <tr>
+                                    <td>@(i + 1)</td>
+                                    <td>@row.InvoiceCode</td>
+                                    <td>@row.InvoiceDate</td>
+                                    <td>@row.InvoiceType</td>
+                                    <td>@row.ProductCode</td>
+                                    <td>@row.ProductDescription</td>
+                                    <td>@row.Quantity</td>
+                                    <td>@row.UnitPrice?.ToString("N0")</td>
+                                    <td>
+                                        @if (row.IsValid)
+                                        {
+                                            <span class="badge bg-success">معتبر</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger" title="@row.ValidationErrors">نامعتبر</span>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                    @if (Model.PreviewData.Count > 10)
+                    {
+                        <p class="text-muted text-center">و @(Model.PreviewData.Count - 10) ردیف دیگر...</p>
+                    }
+                </div>
+
+                <form method="post" asp-page-handler="Import">
+                    <div class="mt-4 d-flex justify-content-between">
+                        <button type="button" class="btn btn-secondary" onclick="location.href='?step=3'">
+                            <i class="fas fa-arrow-right"></i> بازگشت
+                        </button>
+                        <button type="submit" class="btn btn-success">
+                            <i class="fas fa-file-import"></i> بارگذاری نهایی (@Model.PreviewData.Count ردیف)
+                        </button>
+
+                    </div>
+
+                </form>
+            </div>
+    }
+   
+</div>
+
+
+
+<script>
+    // Drag & Drop functionality
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('excelFile');
+    const fileNameDisplay = document.getElementById('fileName');
+    const uploadBtn = document.getElementById('uploadBtn');
+
+    if (uploadArea) {
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+
+            if (e.dataTransfer.files.length > 0) {
+                fileInput.files = e.dataTransfer.files;
+                displayFileName(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                displayFileName(e.target.files[0]);
+            }
+        });
+    }
+
+    function displayFileName(file) {
+        fileNameDisplay.innerHTML = `
+            <i class="fas fa-file-excel text-success"></i>
+            <strong>${file.name}</strong>
+            <span class="text-muted">(${(file.size / 1024).toFixed(2)} KB)</span>
+        `;
+        uploadBtn.style.display = 'inline-block';
+    }
+</script>
+
+@section Scripts {
+    <script>
+        // Auto-detect mapping based on column names
+        document.addEventListener('DOMContentLoaded', function () {
+            const mappings = {
+                'کد فاکتور': 'InvoiceCode',
+                'تاریخ': 'InvoiceDate',
+                'نوع': 'InvoiceType',
+                'الگو': 'InvoicePattern',
+                'تسویه': 'PaymentMethod',
+                'شخص': 'PersonType',
+                'اقتصادی': 'BuyerEconomicCode',
+                'شناسه': 'ProductCode',
+                'شرح': 'ProductDescription',
+                'تعداد': 'Quantity',
+                'مبلغ': 'UnitPrice',
+                'تخفیف': 'Discount',
+                'ارزش': 'TaxPercent',
+                'واحد': 'Unit'
+            };
+
+            // Simple auto-detection (can be improved)
+            //document.querySelectorAll('.mapping-select').forEach(select => {
+            //    const fieldName = select.name.replace('mapping[', '').replace(']', '');
+            //    const options = Array.from(select.options);
+
+            //    options.forEach(option => {
+            //        const columnName = option.value.toLowerCase();
+            //        Object.keys(mappings).forEach(keyword => {
+            //            if (columnName.includes(keyword) && mappings[keyword] === fieldName) {
+            //                option.selected = true;
+            //            }
+            //        });
+            //    });
+            //});
+        });
+    </script>
+}
