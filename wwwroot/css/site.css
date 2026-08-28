@@ -628,7 +628,9 @@ body {
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.5);
-    z-index: 999;
+    /* بالاتر از نوار پایین (9990) تا هنگام باز بودن منو،
+       نوار پایین هم کم‌نور شود؛ و پایین‌تر از خود منو (9995) */
+    z-index: 9992;
 }
 
     .mobile-menu-overlay.active {
@@ -1038,6 +1040,9 @@ body {
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        /* بالاتر از نوار پایین (bottom-nav در pwa.css با z-index 9990)
+           قرار می‌گیرد تا منو روی آن باز شود، نه زیر آن */
+        z-index: 9995;
     }
 
         .sidebar.mobile-open {
