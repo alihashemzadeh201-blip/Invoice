@@ -1,10 +1,14 @@
-﻿using Invoice.Models;
+using Invoice.Code;
+using Invoice.Models;
 using Invoices.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using System;
 using System.ComponentModel.DataAnnotations;
+using System.Threading.Tasks;
 
 namespace Invoice.Pages.Account
 {
@@ -12,15 +16,25 @@ namespace Invoice.Pages.Account
     public class UserProfileModel : PageModel
     {
         DataContext _context;
-        public UserProfileModel(DataContext context)
+        private readonly IProfileSecretProtector _secretProtector;
+        private readonly ILogger<UserProfileModel> _logger;
+
+        public UserProfileModel(DataContext context, IProfileSecretProtector secretProtector, ILogger<UserProfileModel> logger)
         {
             _context = context;
+            _secretProtector = secretProtector;
+            _logger = logger;
         }
+
         [BindProperty]
         public IFormFile? PrivateKey { get; set; }
 
+        /// <summary>
+        /// فقط برای نمایش و دریافت مقادیر فرم استفاده می‌شود. شناسه (Id) و مالک (Creator)
+        /// هرگز از این مدل خوانده نمی‌شوند تا امکان دستکاری پروفایل سایر مودیان وجود نداشته باشد.
+        /// </summary>
         [BindProperty]
-        public Profile Profile { get; set; }
+        public Profile Profile { get; set; } = new Profile();
 
         [BindProperty(SupportsGet = true)]
         public string? ReturnUrl { get; set; }
@@ -28,7 +42,10 @@ namespace Invoice.Pages.Account
         public async Task<IActionResult> OnGetAsync(string? message)
         {
             var user = await _context.Users.Include(p => p.Profile).SingleOrDefaultAsync(p => p.Username == User.Identity.Name);
-            Profile = user.Profile;
+            if (user == null)
+                return Forbid();
+
+            Profile = user.Profile ?? new Profile();
             if (message != null)
                 ModelState.AddModelError("", message);
             return Page();
@@ -36,58 +53,61 @@ namespace Invoice.Pages.Account
 
         public async Task<IActionResult> OnPostAsync()
         {
-            if (ModelState.IsValid)
+            if (!ModelState.IsValid)
+                return Page();
+
+            var username = User.Identity?.Name;
+            if (string.IsNullOrEmpty(username))
+                return Forbid();
+
+            var user = await _context.Users.Include(p => p.Profile).SingleOrDefaultAsync(p => p.Username == username);
+            if (user == null)
+                return Forbid();
+
+            var isNew = user.Profile == null;
+            var profile = user.Profile ?? new Profile();
+
+            // کپی فقط فیلدهای مجاز - Id و Creator از ورودی کاربر پذیرفته نمی‌شوند
+            profile.FirstName = Profile.FirstName;
+            profile.Lastname = Profile.Lastname;
+            profile.TinCode = Profile.TinCode;
+            profile.MemoryId = Profile.MemoryId;
+            profile.PostCode = Profile.PostCode;
+            profile.BranchCode = Profile.BranchCode;
+            profile.RepresentativeCode = Profile.RepresentativeCode;
+            profile.InvoicePattern = Profile.InvoicePattern;
+
+            if (PrivateKey != null)
             {
-
-                if (PrivateKey != null)
-                {
-                    string strPrivateKey = "";
-                    using (var fs = new MemoryStream())
-                    {
-                        await PrivateKey.CopyToAsync(fs);
-                        StreamReader sr = new StreamReader(fs);
-                        fs.Position = 0;
-                        var data = sr.ReadToEnd();
-                        strPrivateKey = data.Replace("-----BEGIN PRIVATE KEY-----\r\n", "").Replace("\r\n-----END PRIVATE KEY-----", "").TrimEnd('\r', '\n');
-                        strPrivateKey = strPrivateKey.Replace("-----BEGIN PRIVATE KEY-----\n", "").Replace("\n-----END PRIVATE KEY-----", "").TrimEnd('\r', '\n');
-                    }
-                    Profile.PrivateKey = strPrivateKey;
-                }
-
-                Profile.Creator = User.Identity.Name;
-                Profile.CreateDate = DateTime.Now;
-                if (Profile.Id > 0)
-                {
-                    _context.Attach(Profile).State = Microsoft.EntityFrameworkCore.EntityState.Modified;
-                }
-                else
-                {
-                    if (Profile.TinCode != null)
-                    {
-                        var profile = await _context.Profiles.SingleOrDefaultAsync(p => p.TinCode == Profile.TinCode && p.Creator == User.Identity.Name);
-                        if (profile != null)
-                        {
-                            ModelState.AddModelError("TinCode", "این کد اقتصادی قبلا برای پروفایل دیگری تعریف شده است");
-                            return Page();
-                        }
-                    }
-                    //_context.Add(Profile);
-                    var user = await _context.Users.Include(p => p.Profile).SingleOrDefaultAsync(p => p.Username == User.Identity.Name);
-                    user.Profile = Profile;
-                }
-                if (PrivateKey == null)
-                {
-                    _context.Entry(Profile).Property("PrivateKey").IsModified = false;
-                }
-                _context.SaveChanges();
-                if (ReturnUrl != null)
-                    return Redirect(ReturnUrl);
-                else
-                    return (RedirectToPage("/Index"));
-
+                profile.PrivateKey = _secretProtector.Protect(await Utils.ReadPrivateKeyFile(PrivateKey));
+                _logger.LogInformation("کلید خصوصی مودی برای کاربر {Username} به روز شد.", username);
             }
-            return Page();
 
+            if (isNew)
+            {
+                profile.Creator = username;
+                profile.CreateDate = DateTime.Now;
+
+                if (profile.TinCode != null)
+                {
+                    var duplicate = await _context.Profiles.SingleOrDefaultAsync(p => p.TinCode == profile.TinCode && p.Creator == username);
+                    if (duplicate != null)
+                    {
+                        ModelState.AddModelError("Profile.TinCode", "این کد اقتصادی قبلا برای پروفایل دیگری تعریف شده است");
+                        return Page();
+                    }
+                }
+
+                user.Profile = profile;
+            }
+
+            await _context.SaveChangesAsync();
+            _logger.LogInformation("پروفایل مودی کاربر {Username} ذخیره شد.", username);
+
+            if (ReturnUrl != null)
+                return Redirect(ReturnUrl);
+
+            return RedirectToPage("/Index");
         }
     }
 }

@@ -8,6 +8,7 @@ using TaxCollectData;
 using Microsoft.Build.Framework;
 using Invoice.Code;
 using Invoice.Models;
+using Microsoft.Extensions.Logging;
 namespace Invoice.Pages.InvoiceManage
 {
     [Authorize]
@@ -17,10 +18,15 @@ namespace Invoice.Pages.InvoiceManage
         ISelectedProfile _profile;
         public IFormFile File { get; set; }
         public List<Invoices.Models.Invoice> Invoices { get; set; }
-        public ImportInvoicesModel(DataContext context,ISelectedProfile profile)
+        private readonly IProfileSecretProtector _secretProtector;
+        private readonly ILogger<ImportInvoicesModel> _logger;
+
+        public ImportInvoicesModel(DataContext context,ISelectedProfile profile, IProfileSecretProtector secretProtector, ILogger<ImportInvoicesModel> logger)
         {
             _context = context;
             _profile = profile;
+            _secretProtector = secretProtector;
+            _logger = logger;
         }
 
         public void OnGet()
@@ -147,7 +153,7 @@ namespace Invoice.Pages.InvoiceManage
             var user = await _context.Users.FindAsync(User.Identity.Name);
             var invoices = await _context.Invoices.Where(p => p.Draft == true && p.Sender == User.Identity.Name &&  p.ProfileId == _profile.ProfileId).ToListAsync();
             var profile = await _context.Profiles.FindAsync(_profile.ProfileId);
-            var responses = new InvoiceApiHelper().SendInvoices(invoices, profile);
+            var responses = new InvoiceApiHelper(_secretProtector, _logger).SendInvoices(invoices, profile);
             for (int i = 0; i < responses.Count; i++)
             {
                 var invoice = invoices[i];

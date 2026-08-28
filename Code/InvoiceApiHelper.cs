@@ -1,6 +1,8 @@
-﻿using Invoice.Migrations;
+using Invoice.Code;
+using Invoice.Migrations;
 using Invoice.Models;
 using Invoices.Models;
+using Microsoft.Extensions.Logging;
 using Nancy.Json;
 using SQLitePCL;
 using System;
@@ -19,16 +21,21 @@ namespace TaxCollectData
         public string MemoryId { get; set; }
         private readonly ITaxIdGenerator _taxIdGenerator = new TaxIdGenerator(new VerhoffProvider());
         private ITaxApis _api;
+        private readonly IProfileSecretProtector? _secretProtector;
+        private readonly ILogger? _logger;
 
-        public InvoiceApiHelper()
+        public InvoiceApiHelper(IProfileSecretProtector? secretProtector = null, ILogger? logger = null)
         {
-
+            _secretProtector = secretProtector;
+            _logger = logger;
         }
         private void initApi(string memoryId, string privateKey)
         {
             MemoryId = memoryId;
+            // کلید خصوصی مودی در پایگاه داده به صورت رمزنگاری شده ذخیره می‌شود
+            var plainPrivateKey = _secretProtector?.Unprotect(privateKey) ?? privateKey;
             TaxApiService.Instance.Init(memoryId,
-                new SignatoryConfig(privateKey, null),
+                new SignatoryConfig(plainPrivateKey, null),
                 new NormalProperties(ClientType.SELF_TSP), "https://tp.tax.gov.ir/req/api");
             _api = TaxApiService.Instance.TaxApis;
         }
@@ -104,11 +111,13 @@ namespace TaxCollectData
                 }
                 catch (Exception ex)
                 {
+                    _logger?.LogError(ex, "خطا در ارتباط با سامانه مویان هنگام ارسال صورتحساب {TaxId}", taxId);
                     throw new Exception("خطا در ارسال فاکتور! این خطا مربوط به سامانه مویان می باشد .");
                 }
             }
             catch (Exception ex)
             {
+                _logger?.LogError(ex, "خطا در ارسال صورتحساب {TaxId}", taxId);
                 message = ex.Message;
                 status = InvoiceStatus.خطا_در_ارسال;
             }
@@ -203,10 +212,12 @@ namespace TaxCollectData
             }
             catch (Exception ex)
             {
+                _logger?.LogError(ex, "خطا در ارسال دسته‌ای صورتحساب‌ها برای شناسه حافظه {MemoryId}", profile?.MemoryId);
                 message = "خطا در ارسال فاکتور! این خطا مربوط به سامانه مویان می باشد .";
                 status = InvoiceStatus.خطا_در_ارسال;
                 responses.Add(new InvoiceApiHelperResponse(taxId, status.Value, referenceNumber, uid, message));
             }
+            _logger?.LogInformation("ارسال دسته‌ای {Count} صورتحساب برای شناسه حافظه {MemoryId} انجام شد.", factors.Count, profile?.MemoryId);
             return responses;
         }
         public InvoiceApiHelperResponse? GetLastStatus(Invoices.Models.Invoice invoice)
@@ -292,7 +303,8 @@ namespace TaxCollectData
             var token = _api.RequestToken();
             if (token?.Token != null && token.Token.Length > 0)
             {
-                Console.WriteLine("success login, token: " + token.Token);
+                // توکن هرگز نباید در خروجی یا لاگ نوشته شود
+                _logger?.LogDebug("دریافت توکن از سامانه مالیاتی با موفقیت انجام شد.");
             }
             else
             {

@@ -1,20 +1,15 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
-using System.Text;
-using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 using Invoices.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.AspNetCore.Mvc.Rendering;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Nancy.Security;
 
 namespace Invoices.Pages.Account
 {
@@ -34,115 +29,119 @@ namespace Invoices.Pages.Account
 
         }
 
+        /// <summary>
+        /// مدل ورودی فرم: فقط فیلدهایی که کاربر مجاز به ارسال آن‌هاست.
+        /// (مدل دیتابیسی User دیگر مستقیماً بایند نمی‌شود تا امکان ارسال Role،
+        /// موجودی کیف پول، هزینه هر فاکتور و ... از سمت مرورگر وجود نداشته باشد)
+        /// </summary>
         [BindProperty]
-        public Invoices.Models.User Input { get; set; }
+        public InputModel Input { get; set; } = new InputModel();
 
-        //[BindProperty]
-        //public IFormFile? PrivateKey { get; set; }
         [BindProperty(SupportsGet = true)]
         public string? ReturnUrl { get; set; }
-        //public SelectList UserTypes { get; set; }
+
         public IList<AuthenticationScheme> ExternalLogins { get; set; }
 
+        public class InputModel
+        {
+            [Required(ErrorMessage = Messages.Required)]
+            [Display(Name = "تلفن همراه")]
+            public string? Username { get; set; }
 
+            [StringLength(100, ErrorMessage = Messages.BetweenLength, MinimumLength = 6)]
+            [DataType(DataType.Password)]
+            [Display(Name = "رمز عبور")]
+            public string? Password { get; set; }
+
+            [DataType(DataType.Password)]
+            [Display(Name = "تایید رمز عبور")]
+            [Compare("Password", ErrorMessage = Messages.PasswordConfirm)]
+            public string? ConfirmPassword { get; set; }
+
+            [DataType(DataType.Password)]
+            [Display(Name = "رمز عبور قبلی")]
+            public string? OldPassword { get; set; }
+        }
 
         public async Task OnGetAsync()
         {
-            if (User.Identity.IsAuthenticated)
+            if (User.Identity?.IsAuthenticated ?? false)
             {
-                Input = await _context.Users.SingleOrDefaultAsync(prop => prop.Username == User.Identity.Name);
+                Input.Username = User.Identity!.Name;
             }
         }
 
         public async Task<IActionResult> OnPostAsync()
         {
+            if (!ModelState.IsValid)
+                return Page();
 
-            if (ModelState.IsValid)
+            if (User.Identity?.IsAuthenticated ?? false)
             {
-                //if (PrivateKey != null)
-                //{
-                //    string strPrivateKey = "";
-                //    using (var fs = new MemoryStream())
-                //    {
-                //        await PrivateKey.CopyToAsync(fs);
-                //        StreamReader sr = new StreamReader(fs);
-                //        fs.Position = 0;
-                //        var data = sr.ReadToEnd();
-                //        strPrivateKey = data.Replace("-----BEGIN PRIVATE KEY-----\r\n", "").Replace("\r\n-----END PRIVATE KEY-----", "").TrimEnd('\r', '\n');
-                //        strPrivateKey = strPrivateKey.Replace("-----BEGIN PRIVATE KEY-----\n", "").Replace("\n-----END PRIVATE KEY-----", "").TrimEnd('\r', '\n');
-                //    }
-                //    Input.Profile.PrivateKey = strPrivateKey;
-                //}
-
-                if (User.Identity?.IsAuthenticated ?? false)
+                // تغییر رمز عبور: نام کاربری از نشستِ کاربر خوانده می‌شود، نه از فرم
+                var username = User.Identity!.Name;
+                var user = await _context.Users.SingleOrDefaultAsync(p => p.Username == username);
+                if (user == null)
                 {
-
-                    var user = await _context.Users.SingleOrDefaultAsync(p => p.Username == Input.Username);
-                    //if (user.Profile == null)
-                    //    user.Profile = new Invoice.Models.Profile();
-                    //user.Profile.TinCode = Input.Profile.TinCode;
-                    //user.Profile.PostCode = Input.Profile.PostCode;
-                    //user.Profile.FirstName = Input.Profile.FirstName;
-                    //user.Profile.Lastname = Input.Profile.Lastname;
-                    //user.Profile.MemoryId = Input.Profile.MemoryId;
-                    //if (PrivateKey != null)
-                    //    user.Profile.PrivateKey = Input.Profile.PrivateKey;
-                    if (Input.Password != null)
-                        if (User.IsAuthenticated() && Encryptor.MD5Hash(Input.OldPassword) != user.Password)
-                        {
-                            ModelState.AddModelError("OldPassword", "پسورد قبلی صحیح نمی باشد");
-                            return Page();
-                        }
-                        else
-                            user.Password = Encryptor.MD5Hash(Input.Password);
-                    //_context.Users.Attach(Input).State = EntityState.Modified;
-                    //if (PrivateKey == null)
-                    //    _context.Entry(Input).Property(p => p.PrivateKey).IsModified = false;
-                    //if(Input.Password==null)
-                    //    _context.Entry(Input).Property(p=>p.Password).IsModified = false;
-                    //else
-                    //    Input.Password=Encryptor.MD5Hash(Input.Password);
-                    //_context.Entry(Input).Property(p => p.PerInvoiceCost).IsModified = false;
-                    //_context.Entry(Input).Property(p => p.Vallet).IsModified = false;
+                    ModelState.AddModelError(string.Empty, "کاربر مورد نظر یافت نشد.");
+                    return Page();
                 }
-                else
+
+                if (string.IsNullOrEmpty(Input.Password))
                 {
-                    if (Input.Password == null)
-                    {
-                        ModelState.AddModelError("Password", "بایستی رمز عبور وارد شود.");
-                        return Page();
-                    }
-                    var dbUser = _context.Users.SingleOrDefault(predicate => predicate.Username == Input.Username);
-                    if (dbUser != null)
-                    {
-                        ModelState.AddModelError(string.Empty, "این نام کاربری قبلا ثبت شده است.");
-                        return Page();
-                    }
-                    else
-                    {
-                        Input.Password = Encryptor.MD5Hash(Input.Password);
-                        Input.RegisterDate = DateTime.Now;
-                        _context.Users.Add(Input);
-
-                        //if (_userManager.Options.SignIn.RequireConfirmedAccount)
-                        //{
-                        await Identity.SignIn(HttpContext, Input.Username, Input.Role);
-                    }
-
-                    //}
-                    //else
-                    //{
-                    //    await _signInManager.SignInAsync(user, isPersistent: false);
-                    //    return LocalRedirect(returnUrl);
-                    //}
+                    ModelState.AddModelError("Input.Password", "بایستی رمز عبور جدید وارد شود.");
+                    return Page();
                 }
+
+                if (PasswordHashManager.Verify(user.Password, Input.OldPassword) == PasswordCheckResult.Failed)
+                {
+                    _logger.LogWarning("تلاش ناموفق برای تغییر رمز عبور کاربر {Username}: رمز عبور قبلی نادرست است.", username);
+                    ModelState.AddModelError("Input.OldPassword", "پسورد قبلی صحیح نمی باشد");
+                    return Page();
+                }
+
+                user.Password = PasswordHashManager.HashPassword(Input.Password);
+                _logger.LogInformation("رمز عبور کاربر {Username} با موفقیت تغییر کرد.", username);
+            }
+            else
+            {
+                var username = (Input.Username ?? string.Empty).Trim();
+
+                if (string.IsNullOrEmpty(username))
+                {
+                    ModelState.AddModelError("Input.Username", Messages.Required);
+                    return Page();
+                }
+
+                if (string.IsNullOrEmpty(Input.Password))
+                {
+                    ModelState.AddModelError("Input.Password", "بایستی رمز عبور وارد شود.");
+                    return Page();
+                }
+
+                var dbUser = _context.Users.SingleOrDefault(predicate => predicate.Username == username);
+                if (dbUser != null)
+                {
+                    ModelState.AddModelError(string.Empty, "این نام کاربری قبلا ثبت شده است.");
+                    return Page();
+                }
+
+                var newUser = new Invoices.Models.User
+                {
+                    Username = username,
+                    Password = PasswordHashManager.HashPassword(Input.Password),
+                    RegisterDate = DateTime.Now,
+                    Role = "user"   // نقش همواره سمت سرور تعیین می‌شود و از فرم پذیرفته نمی‌شود
+                };
+
+                _context.Users.Add(newUser);
                 await _context.SaveChangesAsync();
-                return RedirectToPage("UserProfile", new { ReturnUrl });
-
+                await Identity.SignIn(HttpContext, newUser.Username, newUser.Role);
+                _logger.LogInformation("ثبت نام کاربر جدید {Username}", newUser.Username);
             }
 
-            // If we got this far, something failed, redisplay form
-            return Page();
+            await _context.SaveChangesAsync();
+            return RedirectToPage("UserProfile", new { ReturnUrl });
         }
     }
 }

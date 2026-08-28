@@ -1,4 +1,4 @@
-﻿using Invoice.Models;
+using Invoice.Models;
 using Invoices.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -22,6 +22,11 @@ namespace Invoice.Pages.Request
         {
             if (Id != null)
             {
+                // ثبت درخواست جدید عمومی است، اما مشاهده یک درخواست ثبت‌شده با شناسه
+                // نیازمند ورود است تا امکان مشاهده درخواست‌های سایر افراد وجود نداشته باشد.
+                if (!(User.Identity?.IsAuthenticated ?? false))
+                    return Challenge();
+
                 Request = await _context.KarpooshehRequests.FindAsync(Id);
                 if (Request == null)
                     return NotFound();

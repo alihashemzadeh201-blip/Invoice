@@ -1,8 +1,9 @@
-﻿using Invoices.Models;
+using Invoices.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
@@ -17,9 +18,13 @@ namespace Invoice.Pages.Admin.Users
         public User User { get; set; }
         [BindProperty]
         public bool Edit { get; set; }
-        public AddUserModel(DataContext context)
+
+        private readonly ILogger<AddUserModel> _logger;
+
+        public AddUserModel(DataContext context, ILogger<AddUserModel> logger)
         {
             _context = context;
+            _logger = logger;
         }
     
         public void OnGet(string? username)
@@ -58,15 +63,21 @@ namespace Invoice.Pages.Admin.Users
                     //_context.Entry(User).Property("Password").IsModified = false;
                 //else
                 if(User.Password!=null)
-                    user.Password = Encryptor.MD5Hash(User.Password);
+                    user.Password = PasswordHashManager.HashPassword(User.Password);
             }
             else
             {
                 if (user != null)
                 {
                     ModelState.AddModelError(string.Empty, "این نام کاربری قبلا ثبت شده است.");
+                    return Page();
                 }
-                User.Password = Encryptor.MD5Hash(User.Password);
+                if (string.IsNullOrEmpty(User.Password))
+                {
+                    ModelState.AddModelError("User.Password", "بایستی رمز عبور وارد شود.");
+                    return Page();
+                }
+                User.Password = PasswordHashManager.HashPassword(User.Password);
                 _context.Add(User);
             }
            
@@ -74,6 +85,8 @@ namespace Invoice.Pages.Admin.Users
 
 
             _context.SaveChanges();
+            _logger.LogInformation("کاربر {Username} توسط مدیر {Admin} {Action} شد.",
+                User?.Username, HttpContext.User.Identity?.Name, Edit ? "ویرایش" : "ایجاد");
             return RedirectToPage("./Index");
         }
     }

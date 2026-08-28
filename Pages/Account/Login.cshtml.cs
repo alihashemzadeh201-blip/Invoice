@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -20,15 +20,24 @@ namespace Invoices.Pages.Account
     [AllowAnonymous]
     public class LoginModel : PageModel
     {
-        //private readonly ILogger<LoginModel> _logger;
+        /// <summary>
+        /// پیام یکسان برای نام کاربری یا رمز عبور اشتباه تا امکان شناسایی
+        /// شماره‌های ثبت‌شده در سامانه از بین برود.
+        /// </summary>
+        private const string InvalidLoginMessage = "نام کاربری یا رمز عبور اشتباه است.";
+
         private readonly DataContext _context;
         private ISelectedProfile _selectedProfile;
+        private readonly ILoginThrottle _loginThrottle;
+        private readonly ILogger<LoginModel> _logger;
 
         public LoginModel(
-            DataContext context,ISelectedProfile profile )
+            DataContext context, ISelectedProfile profile, ILoginThrottle loginThrottle, ILogger<LoginModel> logger)
         {
             _context = context;
-            _selectedProfile = profile; 
+            _selectedProfile = profile;
+            _loginThrottle = loginThrottle;
+            _logger = logger;
         }
 
         [BindProperty]
@@ -56,25 +65,17 @@ namespace Invoices.Pages.Account
             [Display(Name = "مرا بخاطر بسپار؟")]
             public bool RememberMe { get; set; }
 
-            
+
         }
 
         public async Task OnGetAsync(string? returnUrl = null)
         {
-            //var users = _context.Users.Where(p => p.Role == null);
-            //foreach (var item in users)
-            //{
-            //    item.Role = item.UserType.ToString();
-            //}
-            //_context.SaveChanges();
             if (!string.IsNullOrEmpty(ErrorMessage))
             {
                 ModelState.AddModelError(string.Empty, ErrorMessage);
             }
 
             returnUrl = returnUrl ?? Url.Content("~/");
-            // Clear the existing external cookie to ensure a clean login process
-
 
             ReturnUrl = returnUrl;
         }
@@ -85,55 +86,54 @@ namespace Invoices.Pages.Account
 
             if (ModelState.IsValid)
             {
-                // This doesn't count login failures towards account lockout
-                // To enable password failures to trigger account lockout, set lockoutOnFailure: true
-                var u = await _context.Users.SingleOrDefaultAsync(prop => prop.Username == Input.Username);
-                if (u == null)
+                var username = (Input.Username ?? string.Empty).Trim();
+
+                // بررسی قفل شدن حساب پس از تلاش‌های ناموفق متوالی
+                if (_loginThrottle.IsLockedOut(username))
                 {
-                    ModelState.AddModelError("", "نام کاربری یافت نشد.");
+                    var remaining = _loginThrottle.RemainingLockout(username);
+                    _logger.LogWarning("تلاش برای ورود به حساب قفل شده: {Username}", username);
+                    ModelState.AddModelError(string.Empty,
+                        $"به دلیل {LoginThrottle.MaxFailedAttempts} تلاش ناموفق متوالی، ورود موقتا غیرفعال شده است. لطفا {Math.Ceiling(remaining.TotalMinutes)} دقیقه دیگر تلاش کنید.");
                     return Page();
                 }
-                if (Encryptor.MD5Hash(Input.Password) == u.Password)
+
+                var u = await _context.Users.SingleOrDefaultAsync(prop => prop.Username == username);
+                var check = u == null
+                    ? PasswordCheckResult.Failed
+                    : PasswordHashManager.Verify(u.Password, Input.Password);
+
+                if (u == null || check == PasswordCheckResult.Failed)
                 {
-                    await Identity.SignIn(HttpContext, Input.Username,u.Role);
-                    _selectedProfile.Initialize(u.Username,u.Role);
-                    if (Input.Username == "admin")
-                    {
-                        return LocalRedirect ("/Admin/Transaction/Index");
-                    }
-                    
-                    var setting = await _context.Settings.SingleOrDefaultAsync(p => p.Role == u.Role);
-                    u.PerInvoiceCost = setting?.PerInvoicePrice ?? 0;
+                    _loginThrottle.RegisterFailedAttempt(username);
+                    _logger.LogWarning("ورود ناموفق برای نام کاربری {Username}", username);
+                    ModelState.AddModelError(string.Empty, InvalidLoginMessage);
+                    return Page();
+                }
+
+                if (check == PasswordCheckResult.NeedsRehash)
+                {
+                    // ارتقای تدریجی رمزهای عبور قدیمی (MD5) به PBKDF2 در اولین ورود موفق
+                    u.Password = PasswordHashManager.HashPassword(Input.Password);
                     await _context.SaveChangesAsync();
-                    //if (u.PhoneVerifications.Count(p => p.IsVerified == true) == 0)
-                    //    return RedirectToPage("MobileConfirmation", new { username = Input.Username, returnUrl });
-                    //if (u.Profiles.Count == 0)
-                    //    return RedirectToPage("/Profiles/Create");
-                    //_logger.LogInformation("User logged in.");
-                    return LocalRedirect(returnUrl);
+                    _logger.LogInformation("رمز عبور کاربر {Username} به الگوریتم جدید منتقل شد.", u.Username);
                 }
-                else
+
+                await Identity.SignIn(HttpContext, u.Username, u.Role);
+                _selectedProfile.Initialize(u.Username, u.Role);
+                _loginThrottle.Reset(username);
+                _logger.LogInformation("ورود موفق کاربر {Username}", u.Username);
+
+                if (u.Username == "admin")
                 {
-                    ModelState.AddModelError("", "نام کابری یا رمز عبور اشتباه است.");
-                    return Page();
+                    return LocalRedirect("/Admin/Transaction/Index");
                 }
-                //var result = await _signInManager.PasswordSignInAsync(Input.Username, Input.Password, Input.RememberMe, lockoutOnFailure: false);
-                //if (result.Succeeded)
-                //{
 
-                
-                //}
+                var setting = await _context.Settings.SingleOrDefaultAsync(p => p.Role == u.Role);
+                u.PerInvoiceCost = setting?.PerInvoicePrice ?? 0;
+                await _context.SaveChangesAsync();
 
-                //if (result.IsLockedOut)
-                //{
-                //    _logger.LogWarning("حساب کاربری مسدود شده است.");
-                //    return RedirectToPage("./Lockout");
-                //}
-                //else
-                //{
-                //    ModelState.AddModelError(string.Empty, "نام کاربری یا رمز عبور اشتباه است.");
-                //    return Page();
-                //}
+                return LocalRedirect(returnUrl);
             }
 
             // If we got this far, something failed, redisplay form

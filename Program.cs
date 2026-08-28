@@ -1,27 +1,58 @@
-﻿using Invoice.Code;
+using Invoice.Code;
 using Invoice.Models;
 using Invoices.Models;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
-using System.Configuration;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddRazorPages().AddRazorRuntimeCompilation();
+// سیاست امنیتی پیش‌فرض: تمام صفحات نیازمند احراز هویت هستند و فقط صفحاتی که در پایین
+// صریحاً استثنا شده‌اند (صفحه اصلی، خطا، ورود، ثبت‌نام و فرم عمومی درخواست) بدون لاگین در دسترس‌اند.
+builder.Services.AddRazorPages(options =>
+{
+    options.Conventions.AuthorizeFolder("/");
+    options.Conventions.AllowAnonymousToPage("/Index");
+    options.Conventions.AllowAnonymousToPage("/Error");
+    options.Conventions.AllowAnonymousToPage("/Privacy");
+    options.Conventions.AllowAnonymousToPage("/Account/Login");
+    options.Conventions.AllowAnonymousToPage("/Account/Register");
+    options.Conventions.AllowAnonymousToPage("/Account/AccessDenied");
+    options.Conventions.AllowAnonymousToPage("/Account/Logout");
+    options.Conventions.AllowAnonymousToPage("/Request/RequestTaxMemoryId");
+    options.Conventions.AllowAnonymousToPage("/Request/SentSuccess");
+}).AddRazorRuntimeCompilation();
 builder.Services.AddControllers(); // Enables MVC
-var connection=builder.Configuration.GetConnectionString("default");
-builder.Services.AddDbContext<DataContext>(p => p.UseSqlServer("server=185.252.29.62,2016;database=sodooref_invoice;user id=sodooref_sa;password=ali@2240841;"));
-builder.Services.AddScoped<ISelectedProfile,SelectedProfile>();
+var connection = builder.Configuration.GetConnectionString("default");
+builder.Services.AddDbContext<DataContext>(p => p.UseSqlServer(connection));
+builder.Services.AddScoped<ISelectedProfile, SelectedProfile>();
 builder.Services.AddScoped<IImportTemplateService, ImportTemplateService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
-builder.Services.AddScoped<IScopedFields,ScopedFields>();
+builder.Services.AddScoped<IScopedFields, ScopedFields>();
 builder.Services.AddScoped<ICustomerFinanceService, CustomerFinanceService>();
 builder.Services.AddHttpContextAccessor();
+
+// محدودسازی تلاش‌های ناموفق ورود (محافظت در برابر بروت‌فورس)
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<ILoginThrottle, LoginThrottle>();
+
+// رمزنگاری داده‌های حساس مودیان (کلید خصوصی امضای مالیاتی) پیش از ذخیره در پایگاه داده.
+// حلقه کلیدها بیرون از پوشه برنامه نگهداری می‌شود تا با انتشار مجدد از بین نرود.
+var keyRingPath = builder.Configuration["DataProtection:KeyRingPath"];
+if (string.IsNullOrWhiteSpace(keyRingPath))
+{
+    keyRingPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Invoice-DataProtection-Keys");
+}
+builder.Services.AddDataProtection()
+    .SetApplicationName("Invoice")
+    .PersistKeysToFileSystem(new DirectoryInfo(keyRingPath));
+builder.Services.AddScoped<IProfileSecretProtector, ProfileSecretProtector>();
+
 builder.Services.AddSession(p =>
 {
     p.IdleTimeout = TimeSpan.FromHours(3);
-   
+
     p.Cookie.HttpOnly = true;
     p.Cookie.IsEssential = true;
 });
@@ -31,36 +62,44 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     op.AccessDeniedPath = "/Account/AccessDenied";
     op.ExpireTimeSpan = TimeSpan.FromMinutes(60);
     op.SlidingExpiration = true;
-   
+
 }
 );
 var app = builder.Build();
-var scope = app.Services.CreateScope();
-var context=scope.ServiceProvider.GetService<DataContext>();
-var user = context.Users.SingleOrDefault(p => p.Username == "admin");
-if (user == null)
-{
-    user = new User
-    {
-        Username = "admin",
-        Password = Encryptor.MD5Hash("la#1631"),       
-        Role = "admin"
-    };
-    context.Users.Add(user);
-}
-else
-{
-    user.Password = Encryptor.MD5Hash("la#1631");
-    user.Role = "admin";
 
+// اطمینان از وجود کاربر مدیر در اولین اجرا.
+// رمز عبور اولیه از تنظیمات خوانده می‌شود و فقط در زمان ایجاد حساب اعمال می‌گردد،
+// بنابراین تغییر رمز توسط مدیر با هر بار استارت برنامه از بین نمی‌رود.
+try
+{
+    using var scope = app.Services.CreateScope();
+    var context = scope.ServiceProvider.GetRequiredService<DataContext>();
+    var startupLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+    var initialAdminPassword = builder.Configuration["InitialAdminPassword"] ?? "la#1631";
+    var user = context.Users.SingleOrDefault(p => p.Username == "admin");
+    if (user == null)
+    {
+        user = new User
+        {
+            Username = "admin",
+            Password = PasswordHashManager.HashPassword(initialAdminPassword),
+            Role = "admin"
+        };
+        context.Users.Add(user);
+        context.SaveChanges();
+        startupLogger.LogWarning("حساب مدیر در اولین اجرا ایجاد شد. رمز عبور اولیه را بلافاصله تغییر دهید.");
+    }
 }
-context.SaveChanges();
+catch (Exception ex)
+{
+    app.Logger.LogError(ex, "خطا در مقداردهی اولیه پایگاه داده هنگام آغاز برنامه. ادامه اجرا بدون مقداردهی اولیه.");
+}
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
+    // The default HSTS value is 30 days. You may want to change it for production scenarios, see https://aka.ms/aspnetcore-hsts.
     //app.UseHsts();
 }
 app.UseCookiePolicy(new CookiePolicyOptions
@@ -83,12 +122,5 @@ app.UseSession();
 
 app.MapRazorPages();
 app.MapControllers();
-
-app.UseEndpoints(endpoints =>
-{
-    endpoints.MapControllers();
-    endpoints.MapRazorPages(); // Enables Razor Pages
-});
-
 
 app.Run();

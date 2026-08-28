@@ -1,4 +1,4 @@
-﻿@page
+@page
 @model RegisterModel
 @{
     ViewData["Title"] = User.Identity.IsAuthenticated ? "ناحیه کاربری" : "ثبت نام";
@@ -7,7 +7,6 @@
 
 <div class="text-center row">
     <form asp-route-returnUrl="@Model.ReturnUrl" method="post" enctype="multipart/form-data" class="col-md-4 m-auto">
-        <input name="Input.UserType" type="hidden" id="userType" />
         <input type="hidden" asp-for="ReturnUrl" />
         <div asp-validation-summary="All" class="text-danger"></div>
         <div class="row mt-2">

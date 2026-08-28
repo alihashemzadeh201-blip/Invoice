@@ -9,6 +9,7 @@ using Nancy.ViewEngines.SuperSimpleViewEngine;
 using SQLitePCL;
 using System.ComponentModel.DataAnnotations;
 using TaxCollectData;
+using Microsoft.Extensions.Logging;
 
 namespace Invoice.Pages.InvoiceManage
 {
@@ -21,10 +22,15 @@ namespace Invoice.Pages.InvoiceManage
         public string TaxId { get; set; }
         DataContext _context;
         ISelectedProfile _profile;
-        public ManualInvoiceCancelModel(DataContext context,ISelectedProfile profile)
+        private readonly IProfileSecretProtector _secretProtector;
+        private readonly ILogger<ManualInvoiceCancelModel> _logger;
+
+        public ManualInvoiceCancelModel(DataContext context,ISelectedProfile profile, IProfileSecretProtector secretProtector, ILogger<ManualInvoiceCancelModel> logger)
         {
             _context= context;  
             _profile= profile;
+            _secretProtector = secretProtector;
+            _logger = logger;
         }
         public void OnGet()
         {
@@ -61,7 +67,7 @@ namespace Invoice.Pages.InvoiceManage
             //invoice.Irtaxid = "A2F9NM04D03002F52EDB29";
             try
             {
-                var apiHelper = new InvoiceApiHelper();
+                var apiHelper = new InvoiceApiHelper(_secretProtector, _logger);
                 var response = apiHelper.SendInvoice(invoice);
                 invoice.Status = response.Status;
                 invoice.ReferenceCode = response.RefId;

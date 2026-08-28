@@ -13,6 +13,7 @@ using System.Linq.Expressions;
 using Nancy.ViewEngines.SuperSimpleViewEngine;
 using Microsoft.AspNetCore.Http.Extensions;
 using Invoice.Code;
+using Microsoft.Extensions.Logging;
 
 namespace Invoices.Pages.InvoiceManage
 {
@@ -28,10 +29,15 @@ namespace Invoices.Pages.InvoiceManage
         [BindProperty(SupportsGet = true)]
         public InvoiceTopic? Ins { get; set; }
 
-        public CreateModel(Invoices.Models.DataContext context,ISelectedProfile profile)
+        private readonly IProfileSecretProtector _secretProtector;
+        private readonly ILogger<CreateModel> _logger;
+
+        public CreateModel(Invoices.Models.DataContext context,ISelectedProfile profile, IProfileSecretProtector secretProtector, ILogger<CreateModel> logger)
         {
             _context = context;
             _profile = profile;
+            _secretProtector = secretProtector;
+            _logger = logger;
         }
         public async Task<IActionResult> OnGetAsync(int? id)
         {
@@ -225,7 +231,7 @@ namespace Invoices.Pages.InvoiceManage
 
                 //invoice.Irtaxid = "A2F9NM04D03002F52EDB29";
                 if (invoice == null) return NotFound();
-                var apiHelper = new InvoiceApiHelper();
+                var apiHelper = new InvoiceApiHelper(_secretProtector, _logger);
 
                 var response = apiHelper.SendInvoice(invoice);
 
@@ -282,7 +288,7 @@ namespace Invoices.Pages.InvoiceManage
         public async Task<IActionResult> OnGetLastStatusAsync(int id)
         {
             var user = await _context.Users.Include(p => p.Profile).SingleOrDefaultAsync(p => p.Username == User.Identity.Name);
-            var apiHelper = new InvoiceApiHelper();
+            var apiHelper = new InvoiceApiHelper(_secretProtector, _logger);
             var invoice = await _context.Invoices.Include(p => p.InvoiceItems).Include(p => p.Payments).Include(p => p.Profile).SingleOrDefaultAsync(p => p.Id == id);
 
             var response = apiHelper.GetLastStatus(invoice);

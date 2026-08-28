@@ -296,3 +296,8 @@ Backups_/
 run_output.txt
 *.csproj-CONFLICT-*.user
 appsettings.Development.json
+
+# کلیدهای رمزنگاری داده‌های حساس (Data Protection) - هرگز نباید در مخزن قرار بگیرند
+Keys/
+DataProtection-Keys/
+*.dpkey

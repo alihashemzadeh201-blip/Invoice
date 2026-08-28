@@ -1,4 +1,5 @@
-﻿using Invoices.Models;
+using Invoices.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -6,6 +7,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Invoice.Pages.InvoiceManage
 {
+    [Authorize]
     public class ImportInvoiceItemsModel : PageModel
     {
         DataContext _context;
@@ -26,6 +28,13 @@ namespace Invoice.Pages.InvoiceManage
 
         public async Task<IActionResult> OnPostAsync()
         {
+            // فقط ایجادکننده فاکتور می‌تواند برای آن آیتم وارد کند
+            var invoice = await _context.Invoices.AsNoTracking().SingleOrDefaultAsync(p => p.Id == InvoiceId);
+            if (invoice == null)
+                return NotFound();
+            if (invoice.Sender != User.Identity?.Name)
+                return Forbid();
+
             var path = $"Uploads/{Path.GetRandomFileName()}.xlsx";
             using(var fs=new FileStream(path, FileMode.Create))
             {
@@ -35,11 +44,6 @@ namespace Invoice.Pages.InvoiceManage
             int index = 0;
             foreach (var item in doc.Rows)
             {
-                //if (index==0)
-                //{
-                //    index++;
-                //    continue;
-                //}
                 index++;
                 if (item.Cells.Count == 0 || item.Cells[0] == "" )
                     break;

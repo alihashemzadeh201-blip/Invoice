@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Html;
+using Microsoft.AspNetCore.Html;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Nancy.Extensions;
@@ -7,6 +7,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
@@ -259,6 +260,30 @@ public class Utils
             sum += item.Length;
         }
         return sum / (1024 * 1024);
+    }
+
+    /// <summary>
+    /// خواندن فایل کلید خصوصیِ ارسالی و حذف سربرگ و پاورقی PEM.
+    /// </summary>
+    public static async Task<string> ReadPrivateKeyFile(IFormFile file)
+    {
+        using var stream = new MemoryStream();
+        await file.CopyToAsync(stream);
+        stream.Position = 0;
+        using var reader = new StreamReader(stream);
+        var data = await reader.ReadToEndAsync();
+
+        var result = data
+            .Replace("-----BEGIN PRIVATE KEY-----\r\n", "")
+            .Replace("\r\n-----END PRIVATE KEY-----", "")
+            .TrimEnd('\r', '\n');
+
+        result = result
+            .Replace("-----BEGIN PRIVATE KEY-----\n", "")
+            .Replace("\n-----END PRIVATE KEY-----", "")
+            .TrimEnd('\r', '\n');
+
+        return result;
     }
 
     public static string DisplayMultilineText(string text)
