@@ -1018,7 +1018,7 @@ body {
     }
 
     .row > div {
-        margin-bottom: 15px;
+        margin-bottom: 10px;
     }
     .profile-select {
         opacity: 1;
@@ -1048,7 +1048,9 @@ body {
 
     .main-content {
         margin-right: 0;
-        padding: 15px;
+        padding: 10px;
+        /* فضای خالی برای نوار پایین (bottom-nav) */
+        padding-bottom: calc(70px + env(safe-area-inset-bottom));
     }
 
     .sidebar-open ~ .main-content {
@@ -1060,7 +1062,8 @@ body {
     }
 
     .top-bar {
-        padding: 15px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
     }
 
     .page-title {
@@ -1074,7 +1077,21 @@ body {
     }
 
     .content-card {
-        padding: 20px;
+        padding: 14px;
+    }
+
+    /* فوتر با حاشیه منفی تا لبه کارت کشیده می‌شود؛
+       این مقادیر باید با padding موبایل هماهنگ باشند وگرنه از عرض صفحه بیرون می‌زند */
+    .dashboard-footer {
+        margin-right: -10px;
+        margin-left: -10px;
+        margin-bottom: -10px;
+        padding: 25px 0;
+    }
+
+    .bottom-buttons {
+        padding: 8px;
+        margin-bottom: -4px;
     }
 }
 

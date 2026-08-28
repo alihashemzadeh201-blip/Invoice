@@ -1,4 +1,4 @@
-﻿@inject Invoice.Code.ISelectedProfile profile
+@inject Invoice.Code.ISelectedProfile profile
 @inject Invoice.Code.IScopedFields fields
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -290,9 +290,9 @@
             <i class="fas fa-file-invoice"></i>
             <span>لیست فاکتورها</span>
         </a>
-        <a href="/invoicemanage/customerledger" class="bottom-nav-item @(Context.Request.Path.StartsWithSegments("/invoicemanage/customerledger", StringComparison.OrdinalIgnoreCase) ? "active" : "")">
-            <i class="fas fa-users"></i>
-            <span>مشتریان</span>
+        <a href="/invoicemanage/manualinvoicecancel" class="bottom-nav-item @(Context.Request.Path.StartsWithSegments("/invoicemanage/manualinvoicecancel", StringComparison.OrdinalIgnoreCase) ? "active" : "")" title="ابطال دستی فاکتور">
+            <i class="fas fa-ban"></i>
+            <span>ابطال فاکتور</span>
         </a>
     </nav>
 

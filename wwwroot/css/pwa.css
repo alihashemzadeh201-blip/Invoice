@@ -1,4 +1,4 @@
-﻿/* ==========================================
+/* ==========================================
    PWA Styles - اضافه کن به انتهای site.css
    ========================================== */
 
@@ -379,10 +379,22 @@
 
 /* iOS Safe Area */
 @supports (padding: max(0px)) {
-    .main-content {
-        padding-right: max(30px, env(safe-area-inset-right));
-        padding-left: max(30px, env(safe-area-inset-left));
-        padding-bottom: max(30px, env(safe-area-inset-bottom));
+    /* دسکتاپ: حاشیه پیش‌فرض */
+    @media (min-width: 769px) {
+        .main-content {
+            padding-right: max(30px, env(safe-area-inset-right));
+            padding-left: max(30px, env(safe-area-inset-left));
+            padding-bottom: max(30px, env(safe-area-inset-bottom));
+        }
+    }
+
+    /* موبایل: حاشیه کمتر + فضای خالی برای نوار پایین (bottom-nav) */
+    @media (max-width: 768px) {
+        .main-content {
+            padding-right: max(10px, env(safe-area-inset-right));
+            padding-left: max(10px, env(safe-area-inset-left));
+            padding-bottom: calc(70px + env(safe-area-inset-bottom));
+        }
     }
 
     .sidebar {
