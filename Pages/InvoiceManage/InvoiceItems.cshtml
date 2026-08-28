@@ -245,7 +245,7 @@
                             }
                             <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
                                 <span class="text-secondary"><i class="fa fa-layer-group me-1"></i> تعداد/مقدار:</span>
-                                <span class="fw-bold">@item.Am.ToString() @unitTitle</span>
+                                <span class="fw-bold">@item.Am?.ToString("G29") @unitTitle</span>
                             </div>
                             <div class="d-flex justify-content-between mb-2 pb-2 border-bottom">
                                 <span class="text-secondary"><i class="fa fa-tag me-1"></i> فی:</span>
@@ -363,7 +363,7 @@
                     return;
                 }
 
-                $scope.selected.ssrv = parseFloat((am * fee).toFixed(2));
+                $scope.selected.ssrv = Math.round(am * fee);
             };
             $scope.setFields = function (id,invoiceId, sstt, sstid, am, mu, fee, dis, vra, consfee, spro, cut, exr, cpr, sovat, nw, ssrv, sscv, bros, bsrn) {
                 $scope.selected = {
