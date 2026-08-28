@@ -1030,6 +1030,14 @@ body {
         width: 280px;
         transform: translateX(100%);
         transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        /* ارتفاع واقعیِ قابل مشاهده در مرورگر موبایل (نوار آدرس شناور) */
+        height: 100vh;
+        height: 100dvh;
+        /* منو ۱۶ آیتم دارد و از ارتفاع صفحه بیشتر می‌شود؛
+           هدر و کارت پروفایل ثابت می‌مانند و فقط فهرست اسکرول می‌خورد */
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     }
 
         .sidebar.mobile-open {
@@ -1038,6 +1046,37 @@ body {
 
         .sidebar-open {
             width: 280px;
+        }
+
+        .sidebar .sidebar-header {
+            flex: 0 0 auto;
+        }
+
+        .sidebar .sidebar-menu {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            /* هنگام رسیدن به انتهای منو، صفحه پشت آن اسکرول نمی‌شود */
+            overscroll-behavior: contain;
+        }
+
+        /* نمایش یک نوار باریک برای اینکه اسکرولی بودن منو مشخص باشد */
+        .sidebar .sidebar-menu::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .sidebar .sidebar-menu::-webkit-scrollbar-thumb {
+            background: rgba(102, 126, 234, 0.35);
+            border-radius: 4px;
+        }
+
+        /* کارت پروفایل از حالت absolute خارج می‌شود تا زیرِ فهرست،
+           در انتهای منو قرار بگیرد و روی آیتم‌ها را نپوشاند */
+        .sidebar .user-profile {
+            position: static;
+            flex: 0 0 auto;
+            margin: 0 10px 10px;
         }
 
         .sidebar .logo-text,
