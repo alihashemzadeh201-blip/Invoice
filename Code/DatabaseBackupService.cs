@@ -299,8 +299,8 @@ SELECT ISNULL(@path, 'C:\temp\');";
                         await writer.WriteLineAsync();
                     }
 
-                    // گام دوم: ورود داده‌های جداول (Table Data) پیش از ایجاد کلیدهای خارجی
-                    // با ورود داده‌ها قبل از فعال‌سازی Foreign Keys، هیچ‌گونه خطای تداخل کلید خارجی (Msg 547) به وجود نمی‌آید
+                    // گام دوم: ورود داده‌های جداول (Table Data) پیش از ایجاد ایندکس‌ها و کلیدهای خارجی
+                    // با ورود داده‌ها قبل از فعال‌سازی Foreign Keys و Indexes، هیچ‌گونه خطای تداخل یا مسدودسازی داده به وجود نمی‌آید
                     await writer.WriteLineAsync("-- ==========================================================================");
                     await writer.WriteLineAsync("-- گام ۲: ورود داده‌های جداول (Table Data)");
                     await writer.WriteLineAsync("-- ==========================================================================");
@@ -313,9 +313,21 @@ SELECT ISNULL(@path, 'C:\temp\');";
                         _logger.LogInformation("جدول {Table}: {Rows} رکورد در اسکریپت پشتیبان درج شد.", tbl, scripted);
                     }
 
-                    // گام سوم: ایجاد روابط و کلیدهای خارجی (Foreign Keys) پس از تکمیل ورود داده‌ها
+                    // گام سوم: ایجاد تمام ایندکس‌های غیرکلاستر و یکتا با فیلتر (Indexes & Filtered Indexes)
+                    // ایندکس‌هایی مانند IX_Users_ProfileId که دارای شرط فیلتر WHERE [ProfileId] IS NOT NULL هستند به درستی حفظ می‌شوند
                     await writer.WriteLineAsync("-- ==========================================================================");
-                    await writer.WriteLineAsync("-- گام ۳: ایجاد روابط و کلیدهای خارجی (Foreign Keys)");
+                    await writer.WriteLineAsync("-- گام ۳: ایجاد ایندکس‌ها شامل ایندکس‌های یکتا و فیلتردار (Indexes & Filtered Indexes)");
+                    await writer.WriteLineAsync("-- ==========================================================================");
+                    var indexesScript = await GenerateIndexesScriptAsync(conn, cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(indexesScript))
+                    {
+                        await writer.WriteLineAsync(indexesScript);
+                        await writer.WriteLineAsync();
+                    }
+
+                    // گام چهارم: ایجاد روابط و کلیدهای خارجی (Foreign Keys) پس از تکمیل ورود داده‌ها و ایندکس‌ها
+                    await writer.WriteLineAsync("-- ==========================================================================");
+                    await writer.WriteLineAsync("-- گام ۴: ایجاد روابط و کلیدهای خارجی (Foreign Keys)");
                     await writer.WriteLineAsync("-- ==========================================================================");
                     var fkScript = await GenerateForeignKeysScriptAsync(conn, cancellationToken);
                     if (!string.IsNullOrWhiteSpace(fkScript))
@@ -325,9 +337,9 @@ SELECT ISNULL(@path, 'C:\temp\');";
                         await writer.WriteLineAsync();
                     }
 
-                    // گام چهارم: اعتبارسنجی تمام کلیدهای خارجی
+                    // گام پنجم: اعتبارسنجی تمام کلیدهای خارجی
                     await writer.WriteLineAsync();
-                    await writer.WriteLineAsync("-- بررسی و اعتبارسنجی مجدد تمام کلیدهای خارجی");
+                    await writer.WriteLineAsync("-- گام ۵: بررسی و اعتبارسنجی مجدد تمام کلیدهای خارجی");
                     await writer.WriteLineAsync("EXEC sp_msforeachtable \"ALTER TABLE ? WITH CHECK CHECK CONSTRAINT all\";");
                     await writer.WriteLineAsync("GO");
                     await writer.WriteLineAsync();
@@ -502,44 +514,105 @@ ORDER BY i.name, ic.key_ordinal;";
             sb.AppendLine("    );");
             sb.AppendLine("END;");
 
-            // سایر ایندکس‌های یکتا (Unique Indexes که Constraint رسمی نیستند اما کلید کاندیدا هستند)
-            var uqIndexes = new Dictionary<string, List<string>>();
+            return sb.ToString();
+        }
+
+        private class IndexDef
+        {
+            public string Name { get; set; } = string.Empty;
+            public string TableName { get; set; } = string.Empty;
+            public bool IsUnique { get; set; }
+            public string TypeDesc { get; set; } = "NONCLUSTERED";
+            public bool HasFilter { get; set; }
+            public string? FilterDefinition { get; set; }
+            public List<string> KeyColumns { get; set; } = new();
+            public List<string> IncludedColumns { get; set; } = new();
+        }
+
+        private async Task<string> GenerateIndexesScriptAsync(DbConnection conn, CancellationToken ct)
+        {
+            var sb = new StringBuilder();
+            var indexDict = new Dictionary<string, IndexDef>(StringComparer.OrdinalIgnoreCase);
+
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText = @"
-SELECT i.name AS IndexName, c.name AS ColName
+SELECT
+    OBJECT_NAME(i.object_id) AS TableName,
+    i.name AS IndexName,
+    i.is_unique AS IsUnique,
+    i.type_desc AS TypeDesc,
+    i.has_filter AS HasFilter,
+    i.filter_definition AS FilterDefinition,
+    c.name AS ColumnName,
+    ic.is_descending_key AS IsDescending,
+    ic.is_included_column AS IsIncluded
 FROM sys.indexes i
 JOIN sys.index_columns ic ON i.object_id = ic.object_id AND i.index_id = ic.index_id
 JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
-WHERE i.object_id = OBJECT_ID(@tableName)
-  AND i.is_unique = 1
-  AND i.is_unique_constraint = 0
+JOIN sys.tables t ON i.object_id = t.object_id
+WHERE t.is_ms_shipped = 0
   AND i.is_primary_key = 0
-ORDER BY i.name, ic.key_ordinal;";
-                var p = cmd.CreateParameter();
-                p.ParameterName = "@tableName";
-                p.Value = tableName;
-                cmd.Parameters.Add(p);
+  AND i.is_unique_constraint = 0
+  AND i.name IS NOT NULL
+ORDER BY TableName, i.name, ic.is_included_column, ic.key_ordinal, ic.index_column_id;";
 
                 using var r = await cmd.ExecuteReaderAsync(ct);
                 while (await r.ReadAsync(ct))
                 {
-                    var idxName = r.GetString(0);
-                    var colName = r.GetString(1);
-                    if (!uqIndexes.ContainsKey(idxName))
+                    var tableName = r.GetString(0);
+                    var indexName = r.GetString(1);
+                    var isUnique = Convert.ToBoolean(r.GetValue(2));
+                    var typeDesc = r.IsDBNull(3) ? "NONCLUSTERED" : r.GetString(3);
+                    var hasFilter = Convert.ToBoolean(r.GetValue(4));
+                    var filterDef = r.IsDBNull(5) ? null : Convert.ToString(r.GetValue(5));
+                    var colName = r.GetString(6);
+                    var isDesc = Convert.ToBoolean(r.GetValue(7));
+                    var isIncluded = Convert.ToBoolean(r.GetValue(8));
+
+                    var key = $"{tableName}.{indexName}";
+                    if (!indexDict.TryGetValue(key, out var idx))
                     {
-                        uqIndexes[idxName] = new List<string>();
+                        idx = new IndexDef
+                        {
+                            TableName = tableName,
+                            Name = indexName,
+                            IsUnique = isUnique,
+                            TypeDesc = typeDesc,
+                            HasFilter = hasFilter,
+                            FilterDefinition = filterDef
+                        };
+                        indexDict[key] = idx;
                     }
-                    uqIndexes[idxName].Add($"[{colName}]");
+
+                    if (isIncluded)
+                    {
+                        idx.IncludedColumns.Add($"[{colName}]");
+                    }
+                    else
+                    {
+                        idx.KeyColumns.Add(isDesc ? $"[{colName}] DESC" : $"[{colName}]");
+                    }
                 }
             }
 
-            foreach (var kvp in uqIndexes)
+            foreach (var idx in indexDict.Values)
             {
-                sb.AppendLine($"IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = '{kvp.Key}' AND object_id = OBJECT_ID(N'[{tableName}]'))");
-                sb.AppendLine($"BEGIN");
-                sb.AppendLine($"    CREATE UNIQUE NONCLUSTERED INDEX [{kvp.Key}] ON [{tableName}] ({string.Join(", ", kvp.Value)});");
-                sb.AppendLine($"END;");
+                if (idx.KeyColumns.Count == 0) continue;
+
+                var uniqueStr = idx.IsUnique ? "UNIQUE " : "";
+                var typeStr = idx.TypeDesc == "CLUSTERED" ? "CLUSTERED " : "NONCLUSTERED ";
+                var keyColsStr = string.Join(", ", idx.KeyColumns);
+                var includeClause = idx.IncludedColumns.Count > 0 ? $" INCLUDE ({string.Join(", ", idx.IncludedColumns)})" : "";
+                var filterClause = (idx.HasFilter && !string.IsNullOrWhiteSpace(idx.FilterDefinition))
+                    ? $" WHERE {idx.FilterDefinition.Trim()}"
+                    : "";
+
+                sb.AppendLine($"IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = '{idx.Name}' AND object_id = OBJECT_ID(N'[{idx.TableName}]'))");
+                sb.AppendLine("BEGIN");
+                sb.AppendLine($"    CREATE {uniqueStr}{typeStr}INDEX [{idx.Name}] ON [{idx.TableName}] ({keyColsStr}){includeClause}{filterClause};");
+                sb.AppendLine("END;");
+                sb.AppendLine("GO");
             }
 
             return sb.ToString();
