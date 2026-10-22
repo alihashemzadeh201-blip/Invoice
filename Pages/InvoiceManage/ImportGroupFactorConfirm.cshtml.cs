@@ -84,7 +84,7 @@ namespace Invoice.Pages.InvoiceManage
                     {
                         if (user.ExpireDate == null || user.ExpireDate < DateTime.Now)
                         {
-                            user.Vallet -= user.PerInvoiceCost;
+                            user.Vallet -= Utils.GetPerInvoiceCost(user, _context);
                             user.InvoiceSent = true;
                         }
 

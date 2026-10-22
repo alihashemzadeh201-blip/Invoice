@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Nodes;
+using Invoice.Code;
 
 namespace Invoices.Pages.InvoiceManage
 {
@@ -11,6 +12,8 @@ namespace Invoices.Pages.InvoiceManage
     public class InvoiceItemsModel : PageModel
     {
         private readonly Invoices.Models.DataContext _context;
+        private readonly IUserActivityLogger _activityLogger;
+
         [BindProperty(SupportsGet = true)]
         public int InvoiceId { get; set; }
 
@@ -20,9 +23,10 @@ namespace Invoices.Pages.InvoiceManage
         public List<Models.Product> Products { get; set; }
         public Invoices.Models.Invoice Invoice { get; set; } = default!;
 
-        public InvoiceItemsModel(Invoices.Models.DataContext context)
+        public InvoiceItemsModel(Invoices.Models.DataContext context, IUserActivityLogger activityLogger)
         {
             _context = context;
+            _activityLogger = activityLogger;
         }
 
         public async Task<IActionResult> OnGetAsync()
@@ -76,7 +80,8 @@ namespace Invoices.Pages.InvoiceManage
                 return Page();
             }
 
-            if (InvoiceItem.Id == 0)
+            bool isNewItem = (InvoiceItem.Id == 0);
+            if (isNewItem)
             {
                 _context.Add(InvoiceItem);
             }
@@ -119,6 +124,16 @@ namespace Invoices.Pages.InvoiceManage
             }
 
             await _context.SaveChangesAsync();
+
+            if (isNewItem)
+            {
+                await _activityLogger.LogInvoiceActionAsync("افزودن قلم کالا", InvoiceId, ownerInvoice.Taxid, $"افزودن قلم کالا: '{InvoiceItem.Sstt}' (تعداد: {InvoiceItem.Am}، فی: {InvoiceItem.Fee})");
+            }
+            else
+            {
+                await _activityLogger.LogInvoiceActionAsync("ویرایش قلم کالا", InvoiceId, ownerInvoice.Taxid, $"ویرایش قلم کالا: '{InvoiceItem.Sstt}' (تعداد: {InvoiceItem.Am}، فی: {InvoiceItem.Fee})");
+            }
+
             return RedirectToPage("InvoiceItems", new { InvoiceId = InvoiceItem.InvoiceId });
         }
 
@@ -134,8 +149,11 @@ namespace Invoices.Pages.InvoiceManage
                 return Forbid();
 
             var invoiceid = invoiceitem.InvoiceId;
+            var taxId = invoiceitem.Invoice?.Taxid;
+            var itemName = invoiceitem.Sstt;
             _context.InvoiceItems.Remove(invoiceitem);
             await _context.SaveChangesAsync();
+            await _activityLogger.LogInvoiceActionAsync("حذف قلم کالا", invoiceid, taxId, $"حذف قلم کالا: '{itemName}'");
             return RedirectToPage("InvoiceItems", new { invoiceid });
 
         }

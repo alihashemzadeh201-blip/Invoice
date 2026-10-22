@@ -20,13 +20,15 @@ namespace Invoice.Pages.InvoiceManage
         public List<Invoices.Models.Invoice> Invoices { get; set; }
         private readonly IProfileSecretProtector _secretProtector;
         private readonly ILogger<ImportInvoicesModel> _logger;
+        private readonly IUserActivityLogger _activityLogger;
 
-        public ImportInvoicesModel(DataContext context,ISelectedProfile profile, IProfileSecretProtector secretProtector, ILogger<ImportInvoicesModel> logger)
+        public ImportInvoicesModel(DataContext context, ISelectedProfile profile, IProfileSecretProtector secretProtector, ILogger<ImportInvoicesModel> logger, IUserActivityLogger activityLogger)
         {
             _context = context;
             _profile = profile;
             _secretProtector = secretProtector;
             _logger = logger;
+            _activityLogger = activityLogger;
         }
 
         public void OnGet()
@@ -118,6 +120,7 @@ namespace Invoice.Pages.InvoiceManage
             else
             {
                 await _context.SaveChangesAsync();
+                await _activityLogger.LogAsync("فاکتور", "ایمپورت فاکتور", $"ایمپورت گروهی {groups.Count()} صورتحساب از فایل اکسل به صورت پیش‌نویس", status: "موفق");
                 return RedirectToPage("ImportInvoices");
             }
 
@@ -171,7 +174,7 @@ namespace Invoice.Pages.InvoiceManage
                     {
                         if (user.ExpireDate == null || user.ExpireDate < DateTime.Now)
                         {
-                            user.Vallet -= user.PerInvoiceCost;
+                            user.Vallet -= Utils.GetPerInvoiceCost(user, _context);
                             user.InvoiceSent = true;
                         }
 

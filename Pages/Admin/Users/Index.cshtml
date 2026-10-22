@@ -21,6 +21,7 @@
                 <td>نام خانوادگی</td>
                 <td>شماره اقتصادی</td>
                 <td>نقش</td>
+                <td>هزینه فاکتور</td>
                 <td>تاریخ ثبت نام</td>
                 <td>تاریخ اعتبار</td>
                 <td></td>
@@ -35,6 +36,7 @@
                     <td>@item.Profile?.Lastname</td>
                     <td>@item.Profile?.TinCode</td>
                     <td>@item.Role</td>
+                    <td>@(item.PerInvoiceCost > 0 ? item.PerInvoiceCost.ToString("#,##0") : "پیش‌فرض")</td>
                     <td>@MyDate.GetPersianDate(item.RegisterDate)</td>
                     <td>@MyDate.GetPersianDate(item.ExpireDate)</td>
                     <td>

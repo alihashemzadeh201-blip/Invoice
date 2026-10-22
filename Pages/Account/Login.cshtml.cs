@@ -30,14 +30,16 @@ namespace Invoices.Pages.Account
         private ISelectedProfile _selectedProfile;
         private readonly ILoginThrottle _loginThrottle;
         private readonly ILogger<LoginModel> _logger;
+        private readonly IUserActivityLogger _activityLogger;
 
         public LoginModel(
-            DataContext context, ISelectedProfile profile, ILoginThrottle loginThrottle, ILogger<LoginModel> logger)
+            DataContext context, ISelectedProfile profile, ILoginThrottle loginThrottle, ILogger<LoginModel> logger, IUserActivityLogger activityLogger)
         {
             _context = context;
             _selectedProfile = profile;
             _loginThrottle = loginThrottle;
             _logger = logger;
+            _activityLogger = activityLogger;
         }
 
         [BindProperty]
@@ -107,6 +109,7 @@ namespace Invoices.Pages.Account
                 {
                     _loginThrottle.RegisterFailedAttempt(username);
                     _logger.LogWarning("ورود ناموفق برای نام کاربری {Username}", username);
+                    await _activityLogger.LogAsync("حساب کاربری", "ورود ناموفق", $"تلاش ناموفق برای ورود با نام کاربری '{username}'", status: "خطا");
                     ModelState.AddModelError(string.Empty, InvalidLoginMessage);
                     return Page();
                 }
@@ -123,15 +126,12 @@ namespace Invoices.Pages.Account
                 _selectedProfile.Initialize(u.Username, u.Role);
                 _loginThrottle.Reset(username);
                 _logger.LogInformation("ورود موفق کاربر {Username}", u.Username);
+                await _activityLogger.LogAsync("حساب کاربری", "ورود موفق", $"ورود کاربر '{u.Username}' (نقش: {u.Role}) به سامانه", status: "موفق");
 
                 if (u.Username == "admin")
                 {
                     return LocalRedirect("/Admin/Transaction/Index");
                 }
-
-                var setting = await _context.Settings.SingleOrDefaultAsync(p => p.Role == u.Role);
-                u.PerInvoiceCost = setting?.PerInvoicePrice ?? 0;
-                await _context.SaveChangesAsync();
 
                 return LocalRedirect(returnUrl);
             }

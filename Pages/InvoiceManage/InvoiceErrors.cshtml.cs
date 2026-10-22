@@ -26,8 +26,8 @@ namespace Invoice.Pages.InvoiceManage
             Invoice=await _context.Invoices.SingleOrDefaultAsync(p=>p.Id==id);
             
             var user = await _context.Users.FindAsync(User.Identity.Name);
-            PerInvoice = user.PerInvoiceCost;
-            ExpireDate = user.ExpireDate;
+            PerInvoice = await Utils.GetPerInvoiceCostAsync(user, _context);
+            ExpireDate = user?.ExpireDate;
             return Page();
         }
     }

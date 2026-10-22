@@ -55,7 +55,7 @@ namespace Invoice.Pages.Admin.Users
                 {
                     user.ExpireDate = User.ExpireDate;
                     user.Role = User.Role;
-
+                    user.PerInvoiceCost = User.PerInvoiceCost;
                 }
 
 

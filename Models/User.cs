@@ -48,6 +48,8 @@ namespace Invoices.Models
         public int? MaxProfileCount { get; set; }
         public string Role { get; set; }
         public bool InvoiceSent { get; set; }
+
+        [Display(Name = "هزینه هر فاکتور (ریال)")]
         public int PerInvoiceCost { get; set; }
         public string DisplayName
         {

@@ -30,6 +30,7 @@ namespace Invoices.Models
         public DbSet<KarpooshehRequest> KarpooshehRequests { get; set; }
         public DbSet<CustomerDebt> CustomerDebts { get; set; }
         public DbSet<CustomerPayment> CustomerPayments { get; set; }
+        public DbSet<UserActivityLog> UserActivityLogs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -40,6 +41,12 @@ namespace Invoices.Models
             modelBuilder.Entity<Profile>(e => e.HasOne(p => p.CreatorUser).WithMany().HasForeignKey(p => p.Creator));
             modelBuilder.Entity<CustomerDebt>(e => e.HasOne(d => d.Profile).WithMany().HasForeignKey(d => d.ProfileId).OnDelete(DeleteBehavior.Restrict));
             modelBuilder.Entity<CustomerPayment>(e => e.HasOne(p => p.Profile).WithMany().HasForeignKey(p => p.ProfileId).OnDelete(DeleteBehavior.Restrict));
+            modelBuilder.Entity<UserActivityLog>(e =>
+            {
+                e.HasIndex(x => x.Timestamp);
+                e.HasIndex(x => x.Category);
+                e.HasIndex(x => x.Username);
+            });
             //modelBuilder.Entity<Profile>(e => e.HasIndex(s => s.TinCode).IsUnique());
             //modelBuilder.Entity<Stuff>(e => e.HasMany(p => p.InvoiceItems).WithOne(e => e.Stuff).HasForeignKey(e => e.Sstid).HasPrincipalKey(e => e.Code));
         }

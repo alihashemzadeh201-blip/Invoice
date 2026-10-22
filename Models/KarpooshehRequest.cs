@@ -37,9 +37,17 @@ namespace Invoices.Models
 
         [Display(Name ="نوع شخص")]
         public PersonType PersonType { get; set; }
+
+        [Display(Name = "تاریخ درخواست")]
         public DateTime RequestDate { get; set; }
+
+        [Display(Name = "تاریخ دریافت")]
         public DateTime? ReceiveDate { get; set; }
+
+        [Display(Name = "تاریخ اتمام")]
         public DateTime? FinishDate { get; set; }
+
+        [Display(Name = "تاریخ انصراف")]
         public DateTime? CancelDate { get; set; }
 
     }

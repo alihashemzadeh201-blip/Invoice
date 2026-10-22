@@ -33,8 +33,8 @@ namespace Invoice.Pages.InvoiceManage
             if (Invoice.Sender!=User.Identity.Name)
                 return Forbid();    
             var user = await _context.Users.FindAsync(User.Identity.Name);
-            PerInvoice = user.PerInvoiceCost;
-            ExpireDate = user.ExpireDate;
+            PerInvoice = await Utils.GetPerInvoiceCostAsync(user, _context);
+            ExpireDate = user?.ExpireDate;
             return Page();
         }
     }

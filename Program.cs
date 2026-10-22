@@ -31,6 +31,8 @@ builder.Services.AddScoped<IImportTemplateService, ImportTemplateService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
 builder.Services.AddScoped<IScopedFields, ScopedFields>();
 builder.Services.AddScoped<ICustomerFinanceService, CustomerFinanceService>();
+builder.Services.AddScoped<IDatabaseBackupService, DatabaseBackupService>();
+builder.Services.AddScoped<IUserActivityLogger, UserActivityLogger>();
 builder.Services.AddHttpContextAccessor();
 
 // محدودسازی تلاش‌های ناموفق ورود (محافظت در برابر بروت‌فورس)
@@ -75,6 +77,37 @@ try
     using var scope = app.Services.CreateScope();
     var context = scope.ServiceProvider.GetRequiredService<DataContext>();
     var startupLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+
+    // اطمینان از وجود جدول لاگ فعالیت کاربران در پایگاه داده
+    try
+    {
+        context.Database.ExecuteSqlRaw(@"
+IF OBJECT_ID(N'[UserActivityLogs]', 'U') IS NULL
+BEGIN
+    CREATE TABLE [UserActivityLogs] (
+        [Id] BIGINT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        [Timestamp] DATETIME2 NOT NULL,
+        [Username] NVARCHAR(100) NOT NULL,
+        [UserRole] NVARCHAR(50) NULL,
+        [ProfileId] INT NULL,
+        [ProfileTitle] NVARCHAR(200) NULL,
+        [Category] NVARCHAR(100) NOT NULL,
+        [Action] NVARCHAR(100) NOT NULL,
+        [Description] NVARCHAR(MAX) NOT NULL,
+        [EntityId] NVARCHAR(100) NULL,
+        [IpAddress] NVARCHAR(50) NULL,
+        [Status] NVARCHAR(50) NOT NULL
+    );
+    CREATE NONCLUSTERED INDEX [IX_UserActivityLogs_Timestamp] ON [UserActivityLogs] ([Timestamp] DESC);
+    CREATE NONCLUSTERED INDEX [IX_UserActivityLogs_Category] ON [UserActivityLogs] ([Category]);
+    CREATE NONCLUSTERED INDEX [IX_UserActivityLogs_Username] ON [UserActivityLogs] ([Username]);
+END");
+    }
+    catch (Exception exTable)
+    {
+        startupLogger.LogWarning(exTable, "بررسی جدول UserActivityLogs با خطا مواجه شد.");
+    }
+
     var initialAdminPassword = builder.Configuration["InitialAdminPassword"] ?? "la#1631";
     var user = context.Users.SingleOrDefault(p => p.Username == "admin");
     if (user == null)

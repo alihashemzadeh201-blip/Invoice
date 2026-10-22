@@ -12,6 +12,9 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Invoices.Models;
+using Invoice.Models;
+using Microsoft.EntityFrameworkCore;
 
 public class Utils
 {
@@ -352,7 +355,62 @@ public class Utils
         {
             errorList.Add(new KeyValuePair<string, string>(item.code, item.message));
         }
-        return errorList;   
+        return errorList;
+    }
+
+    /// <summary>
+    /// محاسبه هزینه هر فاکتور:
+    /// اگر در پروفایل کاربر مبلغ اختصاصی ست شده باشد (بزرگتر از صفر)، همان مبلغ کسر می‌شود؛
+    /// در غیر این صورت مبلغ پیش‌فرض دیتابیس بر اساس نقش (کاربر یا فروشنده) خوانده و اعمال می‌گردد.
+    /// </summary>
+    public static int GetPerInvoiceCost(User? user, DataContext? context)
+    {
+        if (user == null)
+            return 0;
+
+        // اگر توی پروفایل کاربر مبلغ ست شده بود همون مبلغ کسر شود
+        if (user.PerInvoiceCost > 0)
+        {
+            return user.PerInvoiceCost;
+        }
+
+        if (context == null)
+            return 0;
+
+        // و الا مبلغ پیش فرض که توی دیتابیس هست بر اساس نقش کاربر یا فروشنده
+        var role = user.Role?.ToLower() ?? "user";
+        var setting = context.Settings.FirstOrDefault(p => p.Role != null && p.Role.ToLower() == role);
+        if (setting != null && setting.PerInvoicePrice > 0)
+        {
+            return setting.PerInvoicePrice;
+        }
+
+        var defaultSetting = context.Settings.FirstOrDefault();
+        return defaultSetting?.PerInvoicePrice ?? 0;
+    }
+
+    public static async Task<int> GetPerInvoiceCostAsync(User? user, DataContext? context)
+    {
+        if (user == null)
+            return 0;
+
+        if (user.PerInvoiceCost > 0)
+        {
+            return user.PerInvoiceCost;
+        }
+
+        if (context == null)
+            return 0;
+
+        var role = user.Role?.ToLower() ?? "user";
+        var setting = await context.Settings.FirstOrDefaultAsync(p => p.Role != null && p.Role.ToLower() == role);
+        if (setting != null && setting.PerInvoicePrice > 0)
+        {
+            return setting.PerInvoicePrice;
+        }
+
+        var defaultSetting = await context.Settings.FirstOrDefaultAsync();
+        return defaultSetting?.PerInvoicePrice ?? 0;
     }
 
 }

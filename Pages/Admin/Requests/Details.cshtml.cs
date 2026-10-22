@@ -10,7 +10,7 @@ using Invoices.Models;
 
 namespace Invoice.Pages_Admin_KarpooshehRequest
 {
-    [Authorize]
+    [Authorize(Roles = "admin")]
     public class DetailsModel : PageModel
     {
         private readonly Invoices.Models.DataContext _context;

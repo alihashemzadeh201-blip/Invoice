@@ -31,13 +31,15 @@ namespace Invoices.Pages.InvoiceManage
 
         private readonly IProfileSecretProtector _secretProtector;
         private readonly ILogger<CreateModel> _logger;
+        private readonly IUserActivityLogger _activityLogger;
 
-        public CreateModel(Invoices.Models.DataContext context,ISelectedProfile profile, IProfileSecretProtector secretProtector, ILogger<CreateModel> logger)
+        public CreateModel(Invoices.Models.DataContext context, ISelectedProfile profile, IProfileSecretProtector secretProtector, ILogger<CreateModel> logger, IUserActivityLogger activityLogger)
         {
             _context = context;
             _profile = profile;
             _secretProtector = secretProtector;
             _logger = logger;
+            _activityLogger = activityLogger;
         }
         public async Task<IActionResult> OnGetAsync(int? id)
         {
@@ -120,7 +122,8 @@ namespace Invoices.Pages.InvoiceManage
 
                 return Page();
             }
-            if (Invoice.Id == 0)
+            bool isNew = (Invoice.Id == 0);
+            if (isNew)
             {
                 _context.Invoices.Add(Invoice);
                 if (Invoice.Ins == InvoiceTopic.اصلاحی)
@@ -148,6 +151,15 @@ namespace Invoices.Pages.InvoiceManage
             Invoice.Status = InvoiceStatus.در_انتظار_ارسال;
             Invoice.Sender = User?.Identity?.Name ?? "";
             await _context.SaveChangesAsync();
+
+            if (isNew)
+            {
+                await _activityLogger.LogInvoiceActionAsync("ثبت فاکتور جدید", Invoice.Id, Invoice.Taxid, $"ثبت سربرگ فاکتور نوع {Invoice.Inp} و موضوع {Invoice.Ins}");
+            }
+            else
+            {
+                await _activityLogger.LogInvoiceActionAsync("ویرایش فاکتور", Invoice.Id, Invoice.Taxid, $"ویرایش سربرگ فاکتور نوع {Invoice.Inp}");
+            }
 
             return RedirectToPage("./InvoiceItems", new { invoiceid = Invoice.Id });
         }
@@ -177,9 +189,10 @@ namespace Invoices.Pages.InvoiceManage
             }
             _context.Invoices.Add(newInvoice);
             await _context.SaveChangesAsync();
+            await _activityLogger.LogInvoiceActionAsync("کپی فاکتور", newInvoice.Id, newInvoice.Taxid, $"کپی از فاکتور شماره {id}");
             return RedirectToPage("Index");
         }
-        public IActionResult OnGetSendInvoice(int id, bool? cancel = false)
+        public async Task<IActionResult> OnGetSendInvoice(int id, bool? cancel = false)
         {
             User user = null;
             try
@@ -194,9 +207,10 @@ namespace Invoices.Pages.InvoiceManage
             var invoice = _context.Invoices.Include(p => p.InvoiceItems).Include(p => p.Payments).Include(p => p.Profile).SingleOrDefault(p => p.Id == id);
             if (invoice.Sender != User.Identity.Name)
                 return Forbid();
-            if (user != null && invoice.Ins == InvoiceTopic.اصلی && cancel == false && (user.ExpireDate == null || user.ExpireDate < DateTime.Now) && user.Vallet < user.PerInvoiceCost)
+            var perInvoiceCost = Utils.GetPerInvoiceCost(user, _context);
+            if (user != null && invoice.Ins == InvoiceTopic.اصلی && cancel == false && (user.ExpireDate == null || user.ExpireDate < DateTime.Now) && user.Vallet < perInvoiceCost)
             {
-
+                await _activityLogger.LogInvoiceActionAsync("ارسال به سامانه مودیان", invoice.Id, invoice.Taxid, "اعتبار کیف پول کاربر جهت ارسال فاکتور کافی نیست", status: "خطا");
                 return RedirectToPage("/Credit/Expired");
 
             }
@@ -218,14 +232,15 @@ namespace Invoices.Pages.InvoiceManage
                     Status = InvoiceStatus.در_انتظار_ارسال
                 };
                 _context.Invoices.Add(cancelInvoice);
-                _context.SaveChanges();
+                await _context.SaveChangesAsync();
+                await _activityLogger.LogInvoiceActionAsync("ابطال فاکتور", cancelInvoice.Id, cancelInvoice.Taxid, $"ثبت فاکتور ابطالی برای صورتحساب مرجع {invoice.Taxid}");
                 invoice = cancelInvoice;
 
             }
             if (invoice.Status != InvoiceStatus.در_حال_ارسال && invoice.Status != InvoiceStatus.موفق)
             {
                 invoice.Status = InvoiceStatus.در_حال_ارسال;
-                _context.SaveChanges();
+                await _context.SaveChangesAsync();
 
 
 
@@ -248,10 +263,10 @@ namespace Invoices.Pages.InvoiceManage
                     {
                         if (user != null && (user.ExpireDate == null || user.ExpireDate < DateTime.Now))
                         {
-                            user.Vallet -= user.PerInvoiceCost;
+                            user.Vallet -= perInvoiceCost;
                             user.InvoiceSent = true;
                         }
-                      
+
                     }
                     else if (invoice.Ins == InvoiceTopic.ابطالی || invoice.Ins== InvoiceTopic.اصلاحی)
                     {
@@ -262,14 +277,19 @@ namespace Invoices.Pages.InvoiceManage
                             refInvoice.ReferalId = invoice.Id;
                         }
                     }
-                   
+                    await _activityLogger.LogInvoiceActionAsync("ارسال به سامانه مودیان", invoice.Id, invoice.Taxid, $"ارسال موفق به سامانه مودیان با کد رهگیری {invoice.ReferenceCode}", status: "موفق");
                 }
                 else if (invoice.Status == InvoiceStatus.خطا_در_ارسال || invoice.Status == InvoiceStatus.اشکال_در_صورتحساب)
                 {
-                    _context.SaveChanges();
+                    await _context.SaveChangesAsync();
+                    await _activityLogger.LogInvoiceActionAsync("ارسال به سامانه مودیان", invoice.Id, invoice.Taxid, $"خطا در ارسال به سامانه مودیان: {invoice.ResponseMessage}", status: "خطا");
                     return RedirectToPage("InvoiceConfirm", new { id = invoice.Id });
                 }
-                _context.SaveChanges();
+                else
+                {
+                    await _activityLogger.LogInvoiceActionAsync("ارسال به سامانه مودیان", invoice.Id, invoice.Taxid, $"وضعیت ارسال: {invoice.Status} | پیام: {invoice.ResponseMessage}", status: "هشدار");
+                }
+                await _context.SaveChangesAsync();
             }
 
             return RedirectToPage("Index");
@@ -279,8 +299,10 @@ namespace Invoices.Pages.InvoiceManage
         {
             var invoice = await _context.Invoices.Include(p => p.InvoiceItems).SingleOrDefaultAsync(p => p.Id == id);
             if (invoice == null) return NotFound();
+            var taxId = invoice.Taxid;
             _context.Remove(invoice);
             await _context.SaveChangesAsync();
+            await _activityLogger.LogInvoiceActionAsync("حذف فاکتور", id, taxId, "حذف فاکتور و تمامی اقلام آن");
             return RedirectToPage("Index");
 
         }
@@ -292,9 +314,9 @@ namespace Invoices.Pages.InvoiceManage
             var invoice = await _context.Invoices.Include(p => p.InvoiceItems).Include(p => p.Payments).Include(p => p.Profile).SingleOrDefaultAsync(p => p.Id == id);
 
             var response = apiHelper.GetLastStatus(invoice);
-            
+
             bool isSuccessNow = response.Status == InvoiceStatus.موفق && invoice.Status != InvoiceStatus.موفق;
-            
+
             if (isSuccessNow)
             {
                 if (user.ExpireDate == null || user.ExpireDate < DateTime.Now)
@@ -306,6 +328,9 @@ namespace Invoices.Pages.InvoiceManage
             invoice.Status = response.Status;
             invoice.ResponseMessage = response.Response;
             await _context.SaveChangesAsync();
+
+            var statusStr = response.Status == InvoiceStatus.موفق ? "موفق" : (response.Status == InvoiceStatus.خطا_در_ارسال || response.Status == InvoiceStatus.اشکال_در_صورتحساب ? "خطا" : "هشدار");
+            await _activityLogger.LogInvoiceActionAsync("استعلام وضعیت سامانه مودیان", invoice.Id, invoice.Taxid, $"وضعیت جدید: {response.Status} | پیام: {response.Response}", status: statusStr);
 
             if (Request.Headers["X-Requested-With"] == "XMLHttpRequest" || Request.Headers["Accept"].ToString().Contains("application/json"))
             {
