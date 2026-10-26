@@ -1,0 +1,382 @@
+@page
+@model Invoice.Pages.Admin.Bale.IndexModel
+@{
+    ViewBag.Title = "تنظیمات اتصال به پیام‌رسان بله";
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+}
+
+<div class="container-fluid px-0">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h4 class="mb-1 text-primary">
+                <i class="fas fa-paper-plane me-2"></i> اتصال و اطلاع‌رسانی پیام‌رسان بله (Bale Messenger)
+            </h4>
+            <p class="text-muted small mb-0">ارسال خودکار نوتیفیکیشن و پیام به بله هنگام ثبت درخواست‌های جدید، فیش‌های واریزی و ثبت‌نام کاربران</p>
+        </div>
+        <a asp-page="/Admin/Users/Index" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-right me-1"></i> بازگشت به مدیریت کاربران
+        </a>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Model.ErrorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>خطا:</strong> @Model.ErrorMessage
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="بستن"></button>
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(Model.StatusMessage))
+    {
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <i class="fas fa-check-circle me-2"></i> @Model.StatusMessage
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="بستن"></button>
+        </div>
+    }
+
+    <!-- کارت‌های خلاصه وضعیت -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4 col-sm-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle p-3 @(Model.Settings.Enabled ? "bg-success" : "bg-secondary") bg-opacity-10 @(Model.Settings.Enabled ? "text-success" : "text-secondary") me-3">
+                        <i class="fas fa-bell fa-2x"></i>
+                    </div>
+                    <div>
+                        <div class="text-muted small">وضعیت اطلاع‌رسانی</div>
+                        <div class="fw-bold fs-6">
+                            @if (Model.Settings.Enabled)
+                            {
+                                <span class="badge bg-success">فعال</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">غیرفعال</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-sm-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle p-3 @(Model.BotInfo?.Success == true ? "bg-primary" : "bg-warning") bg-opacity-10 @(Model.BotInfo?.Success == true ? "text-primary" : "text-warning") me-3">
+                        <i class="fas fa-robot fa-2x"></i>
+                    </div>
+                    <div>
+                        <div class="text-muted small">ربات بله</div>
+                        <div class="fw-bold fs-6">
+                            @if (Model.BotInfo?.Success == true)
+                            {
+                                <span>@Model.BotInfo.FirstName <small class="text-muted" dir="ltr">(@Model.BotInfo.Username@@)</small></span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">ارتباط برقرار نیست</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 col-sm-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle p-3 bg-info bg-opacity-10 text-info me-3">
+                        <i class="fas fa-comment-dots fa-2x"></i>
+                    </div>
+                    <div>
+                        <div class="text-muted small">شناسه مقصد (Chat ID)</div>
+                        <div class="fw-bold fs-6" dir="ltr">
+                            @(string.IsNullOrWhiteSpace(Model.Settings.ChatId) ? "تنظیم نشده" : Model.Settings.ChatId)
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row g-4 mb-4">
+        <!-- فرم تنظیمات اصلی -->
+        <div class="col-lg-7">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white py-3 border-0">
+                    <h5 class="card-title mb-0 text-primary">
+                        <i class="fas fa-sliders-h me-2"></i> پیکربندی ربات بله
+                    </h5>
+                </div>
+                <div class="card-body pt-0">
+                    <form method="post" id="baleForm">
+                        <div class="mb-3 form-check form-switch p-0 d-flex align-items-center">
+                            <input class="form-check-input ms-2 me-0" type="checkbox" asp-for="Settings.Enabled" id="enableSwitch" style="width: 2.7em; height: 1.4em;">
+                            <label class="form-check-label fw-bold" for="enableSwitch">
+                                فعال‌سازی ارسال اعلان به پیام‌رسان بله
+                            </label>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-key text-warning me-1"></i> توکن ربات (Bot Token)
+                            </label>
+                            <div class="input-group" dir="ltr">
+                                <button class="btn btn-outline-secondary" type="button" id="toggleTokenBtn" title="نمایش / پنهان‌سازی">
+                                    <i class="fas fa-eye" id="toggleTokenIcon"></i>
+                                </button>
+                                <input type="password" class="form-control font-monospace" asp-for="Settings.BotToken" value="@Model.Settings.BotToken" id="botTokenInput" placeholder="123456789:ABCdef..." autocomplete="off" />
+                                <button class="btn btn-outline-primary" type="submit" asp-page-handler="TestToken" title="بررسی توکن">
+                                    <i class="fas fa-check-circle me-1"></i> بررسی توکن
+                                </button>
+                                @if (!string.IsNullOrWhiteSpace(Model.Settings.BotToken))
+                                {
+                                    <button class="btn btn-outline-danger" type="submit" asp-page-handler="ClearToken" title="حذف توکن ربات" onclick="return confirm('آیا از حذف توکن ربات اطمینان دارید؟');">
+                                        <i class="fas fa-trash-alt me-1"></i> حذف توکن
+                                    </button>
+                                }
+                            </div>
+                            <div class="d-flex justify-content-between align-items-center mt-1">
+                                <small class="text-muted">توکن دریافتی از BotFather@@ در بله</small>
+                                @if (!string.IsNullOrWhiteSpace(Model.Settings.BotToken))
+                                {
+                                    <small class="text-success fw-bold">
+                                        <i class="fas fa-shield-alt me-1"></i> توکن ذخیره است (در صورت عدم تغییر حفظ می‌شود)
+                                    </small>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-hashtag text-info me-1"></i> شناسه مقصد چت (Chat ID)
+                            </label>
+                            <div class="input-group" dir="ltr">
+                                <input type="text" class="form-control" asp-for="Settings.ChatId" id="chatIdInput" placeholder="123456789" />
+                                <button class="btn btn-outline-success" type="submit" asp-page-handler="SendTestMessage" title="ارسال پیام تست">
+                                    <i class="fas fa-paper-plane me-1"></i> تست ارسال
+                                </button>
+                            </div>
+                            <small class="text-muted">شناسه کاربری شما، گروه یا کانال مقصد</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">عنوان سامانه در پیام‌ها</label>
+                            <input type="text" class="form-control" asp-for="Settings.CustomTitle" placeholder="سامانه صدور فاکتور" />
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">
+                                <i class="fas fa-link text-primary me-1"></i> آدرس دامنه سامانه (Base URL)
+                            </label>
+                            <input type="text" class="form-control" dir="ltr" asp-for="Settings.BaseUrl" placeholder="https://yourdomain.com" />
+                            <small class="text-muted">اختیاری؛ برای ایجاد لینک‌های مستقیم به صفحات مدیریت در پیام‌های بله (مانند https://yourdomain.com). در صورت خالی بودن، دامنه جاری سرور به صورت خودکار استفاده می‌شود.</small>
+                        </div>
+                        <div class="card bg-light border-0 p-3 mb-3">
+                            <label class="form-label fw-bold mb-2">رویدادهای مشمول اطلاع‌رسانی:</label>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" asp-for="Settings.NotifyOnKarpooshehRequest" id="notifyKarpoosheh">
+                                <label class="form-check-label" for="notifyKarpoosheh">
+                                    درخواست‌های جدید شناسه یکتا و کارپوشه (صفحه عمومی متقاضیان)
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" asp-for="Settings.NotifyOnWalletRequest" id="notifyWallet">
+                                <label class="form-check-label" for="notifyWallet">
+                                    درخواست‌های افزایش موجودی کیف پول و فیش‌های بانکی
+                                </label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" asp-for="Settings.NotifyOnCreditPlanRequest" id="notifyCreditPlan">
+                                <label class="form-check-label" for="notifyCreditPlan">
+                                    درخواست‌های خرید دوره یا بسته اعتباری
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" asp-for="Settings.NotifyOnUserRegister" id="notifyRegister">
+                                <label class="form-check-label" for="notifyRegister">
+                                    ثبت‌نام کاربر جدید در سامانه
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center pt-2">
+                            <button type="submit" asp-page-handler="Save" class="btn btn-primary px-4">
+                                <i class="fas fa-save me-1"></i> ذخیره تنظیمات
+                            </button>
+                            <button type="submit" asp-page-handler="GetChats" class="btn btn-outline-info">
+                                <i class="fas fa-search me-1"></i> شناسایی خودکار شناسه چت
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <!-- راهنمای گام به گام -->
+        <div class="col-lg-5">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white py-3 border-0">
+                    <h5 class="card-title mb-0 text-info">
+                        <i class="fas fa-question-circle me-2"></i> راهنمای راه‌اندازی ربات بله
+                    </h5>
+                </div>
+                <div class="card-body pt-0 small">
+                    <div class="timeline">
+                        <div class="d-flex mb-3">
+                            <div class="me-3">
+                                <span class="badge bg-primary rounded-circle p-2">۱</span>
+                            </div>
+                            <div>
+                                <h6 class="fw-bold mb-1">ساخت ربات در بله</h6>
+                                <p class="text-muted mb-0">
+                                    در پیام‌رسان بله، ربات رسمی <strong dir="ltr">BotFather@@</strong> را باز کرده و دستور <code dir="ltr">/newbot</code> را ارسال کنید. پس از تعیین نام و شناسه کاربری، <strong>توکن ربات</strong> به شما داده می‌شود.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="d-flex mb-3">
+                            <div class="me-3">
+                                <span class="badge bg-primary rounded-circle p-2">۲</span>
+                            </div>
+                            <div>
+                                <h6 class="fw-bold mb-1">ارسال پیام به ربات جدید</h6>
+                                <p class="text-muted mb-0">
+                                    وارد رباتی که ساختید شوید و دکمه <strong>شروع (Start)</strong> یا دستور <code dir="ltr">/start</code> را ارسال کنید تا ربات بتواند به شما پیام بفرستد.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="d-flex mb-3">
+                            <div class="me-3">
+                                <span class="badge bg-primary rounded-circle p-2">۳</span>
+                            </div>
+                            <div>
+                                <h6 class="fw-bold mb-1">یافتن شناسه چت (Chat ID)</h6>
+                                <p class="text-muted mb-0">
+                                    توکن را در فرم مقابل قرار داده و روی <strong>«شناسایی خودکار شناسه چت»</strong> کلیک کنید. چت شما در جدول پایین ظاهر می‌شود و با یک کلیک شناسه آن کپی می‌گردد.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="d-flex mb-3">
+                            <div class="me-3">
+                                <span class="badge bg-primary rounded-circle p-2">۴</span>
+                            </div>
+                            <div>
+                                <h6 class="fw-bold mb-1">ارسال پیام تست</h6>
+                                <p class="text-muted mb-0">
+                                    با زدن دکمه <strong>«تست ارسال»</strong>، یک پیام آزمایشی در بله دریافت خواهید کرد. سپس تیک «فعال‌سازی» را روشن کرده و دکمه ذخیره را بزنید.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-light border small mt-3 mb-0">
+                        <i class="fas fa-users text-primary me-1"></i>
+                        <strong>ارسال به گروه یا کانال:</strong> برای ارسال اعلان‌ها به گروه، ربات را به گروه اضافه کرده و مدیر کنید، سپس یک پیام در گروه بفرستید تا Chat ID گروه شناسایی شود.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    @if (Model.RecentChats != null && Model.RecentChats.Count > 0)
+    {
+        <div class="card shadow-sm border-0 mb-4">
+            <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0 text-success">
+                    <i class="fas fa-comments me-2"></i> آخرین چت‌ها و پیام‌های دریافتی از ربات
+                </h5>
+                <small class="text-muted">برای انتخاب به عنوان چت مقصد، روی دکمه «انتخاب» کلیک کنید</small>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>نوع</th>
+                            <th>عنوان / نام کاربر</th>
+                            <th>نام کاربری</th>
+                            <th>شناسه چت (Chat ID)</th>
+                            <th>آخرین پیام</th>
+                            <th>تاریخ</th>
+                            <th>عملیات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var chat in Model.RecentChats)
+                        {
+                            <tr>
+                                <td>
+                                    @if (chat.Type == "group" || chat.Type == "supergroup")
+                                    {
+                                        <span class="badge bg-info text-dark">گروه</span>
+                                    }
+                                    else if (chat.Type == "channel")
+                                    {
+                                        <span class="badge bg-warning text-dark">کانال</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">خصوصی</span>
+                                    }
+                                </td>
+                                <td class="fw-bold">@chat.Title</td>
+                                <td dir="ltr">@(string.IsNullOrEmpty(chat.Username) ? "-" : $"@{chat.Username}")</td>
+                                <td dir="ltr" class="font-monospace text-primary fw-bold">@chat.ChatId</td>
+                                <td class="text-truncate" style="max-width: 200px;">@chat.LastMessageText</td>
+                                <td class="small text-muted" dir="ltr">@chat.LastMessageDate?.ToLocalTime().ToString("yyyy/MM/dd HH:mm")</td>
+                                <td>
+                                    <button type="button" class="btn btn-sm btn-outline-success select-chat-btn" data-chatid="@chat.ChatId">
+                                        <i class="fas fa-check me-1"></i> انتخاب این چت
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+@section Scripts {
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // نمایش / مخفی‌سازی توکن
+            const toggleBtn = document.getElementById('toggleTokenBtn');
+            const tokenInput = document.getElementById('botTokenInput');
+            const toggleIcon = document.getElementById('toggleTokenIcon');
+
+            if (toggleBtn && tokenInput && toggleIcon) {
+                toggleBtn.addEventListener('click', function () {
+                    if (tokenInput.type === 'password') {
+                        tokenInput.type = 'text';
+                        toggleIcon.classList.remove('fa-eye');
+                        toggleIcon.classList.add('fa-eye-slash');
+                    } else {
+                        tokenInput.type = 'password';
+                        toggleIcon.classList.remove('fa-eye-slash');
+                        toggleIcon.classList.add('fa-eye');
+                    }
+                });
+            }
+
+            // انتخاب Chat ID از جدول
+            document.querySelectorAll('.select-chat-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    const chatId = this.getAttribute('data-chatid');
+                    const chatIdInput = document.getElementById('chatIdInput');
+                    if (chatIdInput && chatId) {
+                        chatIdInput.value = chatId;
+                        chatIdInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        chatIdInput.classList.add('is-valid');
+                        setTimeout(function () {
+                            chatIdInput.classList.remove('is-valid');
+                        }, 2000);
+                    }
+                });
+            });
+        });
+    </script>
+}
+
+
+
+
+</div>

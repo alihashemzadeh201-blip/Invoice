@@ -1,3 +1,4 @@
+using Invoice.Code;
 using Invoice.Models;
 using Invoices.Models;
 using Microsoft.AspNetCore.Mvc;
@@ -8,14 +9,18 @@ namespace Invoice.Pages.Request
 {
     public class RequestTaxMemoryIdModel : PageModel
     {
-        DataContext _context;
+        private readonly DataContext _context;
+        private readonly IBaleNotificationService _baleService;
+
         [BindProperty]
         public KarpooshehRequest Request { get; set; }
         [BindProperty(SupportsGet =true)]
         public int? Id { get; set; }
-        public RequestTaxMemoryIdModel(DataContext context)
+
+        public RequestTaxMemoryIdModel(DataContext context, IBaleNotificationService baleService)
         {
             _context = context;
+            _baleService = baleService;
         }
     
         public async Task<ActionResult> OnGetAsync()
@@ -43,12 +48,19 @@ namespace Invoice.Pages.Request
                 ModelState.AddModelError("", "با این شناسه ملی قبلا درخواست ارسال کرده اید");
                 return Page();
             }
-            if (Id == null)
+            var isNew = Id == null;
+            if (isNew)
                 _context.KarpooshehRequests.Add(Request);
             else
                 _context.Attach(Request).State = EntityState.Modified;
             Request.RequestDate= DateTime.Now;
             await _context.SaveChangesAsync();
+
+            if (isNew)
+            {
+                await _baleService.SendKarpooshehRequestNotificationAsync(Request);
+            }
+
             return RedirectToPage("./SentSuccess",new {requestid=Request.Id});
         }
     }

@@ -49,6 +49,10 @@ bld/
 TestResult.xml
 nunit-*.xml
 
+# Runtime settings
+bale_settings.json
+
+
 # Build Results of an ATL Project
 [Dd]ebugPS/
 [Rr]eleasePS/

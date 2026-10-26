@@ -35,6 +35,14 @@ builder.Services.AddScoped<IDatabaseBackupService, DatabaseBackupService>();
 builder.Services.AddScoped<IUserActivityLogger, UserActivityLogger>();
 builder.Services.AddHttpContextAccessor();
 
+// خدمات اتصال و اطلاع‌رسانی پیام‌رسان بله
+builder.Services.AddHttpClient("BaleClient", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddSingleton<IBaleSettingsService, BaleSettingsService>();
+builder.Services.AddScoped<IBaleNotificationService, BaleNotificationService>();
+
 // محدودسازی تلاش‌های ناموفق ورود (محافظت در برابر بروت‌فورس)
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<ILoginThrottle, LoginThrottle>();

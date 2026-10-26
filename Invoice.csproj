@@ -4,6 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <DefaultItemExcludes>$(DefaultItemExcludes);Invoice.Tests\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -34,7 +35,7 @@
 
   <ItemGroup>
     <Reference Include="TaxCollectData.Library">
-      <HintPath>..\TaxCollectData.Library\TaxCollectData.Library.dll</HintPath>
+      <HintPath>..\..\Sync\Projects\Invoice\TaxCollectData.Library.dll</HintPath>
     </Reference>
   </ItemGroup>
 

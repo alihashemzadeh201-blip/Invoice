@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
+using Invoice.Code;
 using Invoices.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -16,17 +17,19 @@ namespace Invoices.Pages.Account
     [AllowAnonymous]
     public class RegisterModel : PageModel
     {
-        DataContext _context;
+        private readonly DataContext _context;
         private readonly ILogger<RegisterModel> _logger;
+        private readonly IBaleNotificationService _baleService;
 
         public RegisterModel(
             DataContext context,
-            ILogger<RegisterModel> logger
+            ILogger<RegisterModel> logger,
+            IBaleNotificationService baleService
           )
         {
             _context = context;
             _logger = logger;
-
+            _baleService = baleService;
         }
 
         /// <summary>
@@ -138,6 +141,7 @@ namespace Invoices.Pages.Account
                 await _context.SaveChangesAsync();
                 await Identity.SignIn(HttpContext, newUser.Username, newUser.Role);
                 _logger.LogInformation("ثبت نام کاربر جدید {Username}", newUser.Username);
+                await _baleService.SendUserRegisteredNotificationAsync(newUser);
             }
 
             await _context.SaveChangesAsync();

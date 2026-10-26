@@ -1,4 +1,5 @@
-﻿using Invoice.Models;
+﻿using Invoice.Code;
+using Invoice.Models;
 using Invoices.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,14 +11,16 @@ namespace Invoice.Pages.Credit
     [Authorize(Roles ="user")]
     public class CreditRequestModel : PageModel
     {
-        DataContext _context;
+        private readonly DataContext _context;
+        private readonly IBaleNotificationService _baleService;
+
         public List<CreditPeriod> Periods { get; set; }
         [BindProperty]
         public CreditRequest CreditRequest { get; set; }
-        public CreditRequestModel(DataContext context)
+        public CreditRequestModel(DataContext context, IBaleNotificationService baleService)
         {
             _context = context;
-
+            _baleService = baleService;
         }
         public bool NoMoney { get; set; }
         public DateTime? ExpireDate { get; set; }
@@ -55,6 +58,9 @@ namespace Invoice.Pages.Credit
             user.ExpireDate = (user.ExpireDate ?? DateTime.Now).AddMonths(period.Months);
 
             await _context.SaveChangesAsync();
+
+            await _baleService.SendCreditPlanRequestNotificationAsync(CreditRequest);
+
             return RedirectToPage("Index");
         }
     }
