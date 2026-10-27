@@ -384,7 +384,7 @@ namespace Invoice.Code
 📝 <b>توضیحات:</b> {HtmlSafe(transaction.Description)}
 📅 <b>تاریخ ثبت:</b> {HtmlSafe(nowShamsi)}
 🔗 <b>شناسه تراکنش:</b> #{transaction.Id}
-🔗 ";
+🔗 <a href=""{targetUrl}"">بررسی و تایید تراکنش کیف پول</a>";
 
                 object? replyMarkup = null;
                 if (settings.BotInteractivityEnabled && transaction.Id > 0)

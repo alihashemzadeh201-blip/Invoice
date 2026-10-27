@@ -31,6 +31,7 @@ namespace Invoices.Models
         public DbSet<CustomerDebt> CustomerDebts { get; set; }
         public DbSet<CustomerPayment> CustomerPayments { get; set; }
         public DbSet<UserActivityLog> UserActivityLogs { get; set; }
+        public DbSet<BaleUserState> BaleUserStates { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

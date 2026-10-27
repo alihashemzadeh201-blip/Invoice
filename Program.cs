@@ -56,6 +56,8 @@ builder.Services.AddScoped<IBaleNotificationService, BaleNotificationService>();
 builder.Services.AddScoped<IBaleBotActionService, BaleBotActionService>();
 builder.Services.AddScoped<IBaleUpdateProcessor, BaleUpdateProcessor>();
 builder.Services.AddHostedService<BaleBotBackgroundService>();
+builder.Services.AddScoped<IBaleUserBotService, BaleUserBotService>();
+builder.Services.AddHostedService<BaleUserBotBackgroundService>();
 
 // محدودسازی تلاش‌های ناموفق ورود (محافظت در برابر بروت‌فورس)
 builder.Services.AddMemoryCache();
@@ -128,6 +130,35 @@ END");
     catch (Exception exTable)
     {
         startupLogger.LogWarning(exTable, "بررسی جدول UserActivityLogs با خطا مواجه شد.");
+    }
+
+    // اطمینان از وجود جدول وضعیت گفتگوی کاربران بله و ستون‌های تکمیلی
+    try
+    {
+        context.Database.ExecuteSqlRaw(@"
+IF OBJECT_ID(N'[BaleUserStates]', 'U') IS NULL
+BEGIN
+    CREATE TABLE [BaleUserStates] (
+        [ChatId] NVARCHAR(100) NOT NULL PRIMARY KEY,
+        [Username] NVARCHAR(100) NULL,
+        [CurrentStep] NVARCHAR(100) NOT NULL,
+        [StateDataJson] NVARCHAR(MAX) NULL,
+        [LastUpdated] DATETIME2 NOT NULL
+    );
+END
+IF COL_LENGTH('Users', 'BaleChatId') IS NULL ALTER TABLE Users ADD BaleChatId NVARCHAR(100) NULL;
+IF COL_LENGTH('Users', 'BaleUsername') IS NULL ALTER TABLE Users ADD BaleUsername NVARCHAR(100) NULL;
+IF COL_LENGTH('KarpooshehRequests', 'PostalCode') IS NULL ALTER TABLE KarpooshehRequests ADD PostalCode NVARCHAR(50) NULL;
+IF COL_LENGTH('KarpooshehRequests', 'BaleChatId') IS NULL ALTER TABLE KarpooshehRequests ADD BaleChatId NVARCHAR(100) NULL;
+IF COL_LENGTH('KarpooshehRequests', 'BaleUsername') IS NULL ALTER TABLE KarpooshehRequests ADD BaleUsername NVARCHAR(100) NULL;
+IF COL_LENGTH('KarpooshehRequests', 'IsPaid') IS NULL ALTER TABLE KarpooshehRequests ADD IsPaid BIT NOT NULL CONSTRAINT DF_Karpoosheh_IsPaid DEFAULT 0;
+IF COL_LENGTH('KarpooshehRequests', 'PaymentReference') IS NULL ALTER TABLE KarpooshehRequests ADD PaymentReference NVARCHAR(100) NULL;
+IF COL_LENGTH('KarpooshehRequests', 'PaymentAmount') IS NULL ALTER TABLE KarpooshehRequests ADD PaymentAmount INT NULL;
+");
+    }
+    catch (Exception exSchema)
+    {
+        startupLogger.LogWarning(exSchema, "بررسی ستون‌ها و جدول‌های ربات بله با خطا مواجه شد.");
     }
 
     var initialAdminPassword = builder.Configuration["InitialAdminPassword"] ?? "la#1631";

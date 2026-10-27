@@ -20,6 +20,13 @@ namespace Invoice.Code
         public string UpdateMode { get; set; } = "Polling"; // "Polling" یا "Webhook"
         public string WebhookSecretToken { get; set; } = string.Empty;
         public string AdminChatIds { get; set; } = string.Empty;
+
+        // تنظیمات اختصاصی ربات کاربر پیام‌رسان بله (User Bot)
+        public bool UserBotEnabled { get; set; } = false;
+        public string UserBotToken { get; set; } = string.Empty;
+        public string UserBotPaymentProviderToken { get; set; } = string.Empty;
+        public int RegistrationFee { get; set; } = 5000000; // ریال
+        public string UserBotWebhookSecret { get; set; } = string.Empty;
     }
 
     public class BaleBotInfo

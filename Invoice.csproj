@@ -35,7 +35,7 @@
 
   <ItemGroup>
     <Reference Include="TaxCollectData.Library">
-      <HintPath>..\..\Sync\Projects\Invoice\TaxCollectData.Library.dll</HintPath>
+      <HintPath>libs\TaxCollectData.Library.dll</HintPath>
     </Reference>
   </ItemGroup>
 

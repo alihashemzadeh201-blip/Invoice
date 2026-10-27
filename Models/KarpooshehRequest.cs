@@ -32,6 +32,24 @@ namespace Invoices.Models
         [Phone(ErrorMessage =Messages.Invalid)]
         public string Phone { get; set; }
 
+        [Display(Name = "کد پستی")]
+        public string? PostalCode { get; set; }
+
+        [Display(Name = "شناسه چت بله")]
+        public string? BaleChatId { get; set; }
+
+        [Display(Name = "نام کاربری بله")]
+        public string? BaleUsername { get; set; }
+
+        [Display(Name = "پرداخت شده")]
+        public bool IsPaid { get; set; } = false;
+
+        [Display(Name = "کد رهگیری پرداخت بله")]
+        public string? PaymentReference { get; set; }
+
+        [Display(Name = "مبلغ پرداختی (ریال)")]
+        public int? PaymentAmount { get; set; }
+
         [Display(Name ="توضیحات")]
         public string? Description { get; set; }
 

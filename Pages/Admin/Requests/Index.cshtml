@@ -52,6 +52,9 @@
                             <th class="d-none d-md-table-cell">
                                 توضیحات
                             </th>
+                            <th class="text-nowrap">
+                                وضعیت پرداخت
+                            </th>
                             <th class="text-center text-nowrap">عملیات</th>
                         </tr>
                     </thead>
@@ -80,23 +83,39 @@
                                 <td class="d-none d-md-table-cell small text-muted">
                                     @Html.DisplayFor(modelItem => item.Description)
                                 </td>
-                                <td class="text-center text-nowrap">
-                                    <div class="btn-group btn-group-sm" role="group">
-                                        @if (item.ReceiveDate == null)
+                                <td class="text-nowrap">
+                                    @if (!string.IsNullOrWhiteSpace(item.BaleChatId))
+                                    {
+                                        <span class="badge bg-primary me-1" title="ثبت شده از طریق ربات بله"><i class="fas fa-robot"></i> بله</span>
+                                        @if (item.IsPaid)
                                         {
-                                            <a asp-page-handler="Receive" asp-route-id="@item.Id" class="btn btn-outline-success" title="ثبت دریافت درخواست">
-                                                <i class="fas fa-check me-1"></i> دریافت
-                                            </a>
+                                            <span class="badge bg-success" title="کد رهگیری: @item.PaymentReference">
+                                                <i class="fas fa-check-circle"></i> پرداخت شده
+                                            </span>
                                         }
                                         else
                                         {
-                                            <span class="badge bg-success bg-opacity-75 align-self-center me-1" title="تاریخ دریافت: @(MyDate.GetPersianDate(item.ReceiveDate)?.ToString() ?? "")">
-                                                دریافت شد
+                                            <span class="badge bg-warning text-dark">
+                                                <i class="fas fa-clock"></i> در انتظار پرداخت
                                             </span>
                                         }
-                                        <a asp-page="./Details" asp-route-id="@item.Id" class="btn btn-outline-primary" title="مشاهده جزئیات">
-                                            <i class="fas fa-eye"></i>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary"><i class="fas fa-globe"></i> وب‌سایت</span>
+                                    }
+                                </td>
+                                <td class="text-center text-nowrap">
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a asp-page="./Details" asp-route-id="@item.Id" class="btn btn-outline-primary" title="مشاهده جزئیات و صدور شناسه">
+                                            <i class="fas fa-key me-1"></i> صدور شناسه
                                         </a>
+                                        @if (item.ReceiveDate == null)
+                                        {
+                                            <a asp-page-handler="Receive" asp-route-id="@item.Id" class="btn btn-outline-success" title="ثبت دریافت درخواست">
+                                                <i class="fas fa-check"></i>
+                                            </a>
+                                        }
                                         <a asp-page-handler="Reject" asp-route-id="@item.Id" onclick="return confirm('@Messages.DeleteConfirm')" class="btn btn-outline-danger" title="حذف درخواست">
                                             <i class="fas fa-trash-alt"></i>
                                         </a>

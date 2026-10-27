@@ -37,14 +37,14 @@
 
     <!-- کارت‌های خلاصه وضعیت -->
     <div class="row g-3 mb-4">
-        <div class="col-md-4 col-sm-6">
+        <div class="col-md-3 col-sm-6">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-body d-flex align-items-center">
                     <div class="rounded-circle p-3 @(Model.Settings.Enabled ? "bg-success" : "bg-secondary") bg-opacity-10 @(Model.Settings.Enabled ? "text-success" : "text-secondary") me-3">
                         <i class="fas fa-bell fa-2x"></i>
                     </div>
                     <div>
-                        <div class="text-muted small">وضعیت اطلاع‌رسانی</div>
+                        <div class="text-muted small">ربات ادمین (اعلان‌ها)</div>
                         <div class="fw-bold fs-6">
                             @if (Model.Settings.Enabled)
                             {
@@ -59,14 +59,14 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4 col-sm-6">
+        <div class="col-md-3 col-sm-6">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-body d-flex align-items-center">
                     <div class="rounded-circle p-3 @(Model.BotInfo?.Success == true ? "bg-primary" : "bg-warning") bg-opacity-10 @(Model.BotInfo?.Success == true ? "text-primary" : "text-warning") me-3">
-                        <i class="fas fa-robot fa-2x"></i>
+                        <i class="fas fa-user-shield fa-2x"></i>
                     </div>
                     <div>
-                        <div class="text-muted small">ربات بله</div>
+                        <div class="text-muted small">مشخصات ربات ادمین</div>
                         <div class="fw-bold fs-6">
                             @if (Model.BotInfo?.Success == true)
                             {
@@ -81,16 +81,45 @@
                 </div>
             </div>
         </div>
-        <div class="col-md-4 col-sm-6">
+        <div class="col-md-3 col-sm-6">
             <div class="card shadow-sm border-0 h-100">
                 <div class="card-body d-flex align-items-center">
-                    <div class="rounded-circle p-3 bg-info bg-opacity-10 text-info me-3">
-                        <i class="fas fa-comment-dots fa-2x"></i>
+                    <div class="rounded-circle p-3 @(Model.Settings.UserBotEnabled ? "bg-success" : "bg-secondary") bg-opacity-10 @(Model.Settings.UserBotEnabled ? "text-success" : "text-secondary") me-3">
+                        <i class="fas fa-users-cog fa-2x"></i>
                     </div>
                     <div>
-                        <div class="text-muted small">شناسه مقصد (Chat ID)</div>
-                        <div class="fw-bold fs-6" dir="ltr">
-                            @(string.IsNullOrWhiteSpace(Model.Settings.ChatId) ? "تنظیم نشده" : Model.Settings.ChatId)
+                        <div class="text-muted small">ربات کاربران (User Bot)</div>
+                        <div class="fw-bold fs-6">
+                            @if (Model.Settings.UserBotEnabled)
+                            {
+                                <span class="badge bg-success">فعال</span>
+                            }
+                            else
+                            {
+                                <span class="badge bg-secondary">غیرفعال</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-sm-6">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body d-flex align-items-center">
+                    <div class="rounded-circle p-3 @(Model.UserBotInfo?.Success == true ? "bg-primary" : "bg-warning") bg-opacity-10 @(Model.UserBotInfo?.Success == true ? "text-primary" : "text-warning") me-3">
+                        <i class="fas fa-robot fa-2x"></i>
+                    </div>
+                    <div>
+                        <div class="text-muted small">مشخصات ربات کاربر</div>
+                        <div class="fw-bold fs-6">
+                            @if (Model.UserBotInfo?.Success == true)
+                            {
+                                <span>@Model.UserBotInfo.FirstName <small class="text-muted" dir="ltr">(@Model.UserBotInfo.Username@@)</small></span>
+                            }
+                            else
+                            {
+                                <span class="text-muted">تنظیم نشده</span>
+                            }
                         </div>
                     </div>
                 </div>
@@ -253,6 +282,67 @@
                                         <i class="fas fa-sync-alt me-1"></i> سوئیچ به دریافت خودکار (Polling)
                                     </button>
                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- بخش ربات اختصاصی کاربر (User Bot) و پرداخت بومی بله -->
+                        <div class="card bg-white border border-success border-opacity-25 p-3 mb-3 shadow-sm rounded-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label fw-bold text-success mb-0">
+                                    <i class="fas fa-users me-1"></i> ربات اختصاصی کاربران و پرداخت بومی بله (User Bot)
+                                </label>
+                                <div class="form-check form-switch m-0">
+                                    <input class="form-check-input" type="checkbox" asp-for="Settings.UserBotEnabled" id="userBotSwitch" style="width: 2.7em; height: 1.4em;">
+                                </div>
+                            </div>
+                            <small class="text-muted mb-3 d-block">
+                                این ربات به عنوان دستیار هوشمند مودیان عمل کرده و امکان ثبت‌نام، پرداخت هزینه صدور شناسه یکتا از طریق درگاه امن پیام‌رسان بله، شارژ کیف پول، تمدید دوره و ارسال و ابطال فاکتور را برای کاربران فراهم می‌سازد.
+                            </small>
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">
+                                    <i class="fas fa-key text-warning me-1"></i> توکن ربات اختصاصی کاربر:
+                                </label>
+                                <div class="input-group" dir="ltr">
+                                    <input type="password" class="form-control font-monospace form-control-sm" asp-for="Settings.UserBotToken" value="@Model.Settings.UserBotToken" placeholder="توکن دریافتی از BotFather" autocomplete="off" />
+                                    <button class="btn btn-outline-primary btn-sm" type="submit" asp-page-handler="TestUserBotToken" title="بررسی توکن">
+                                        <i class="fas fa-check-circle me-1"></i> بررسی توکن
+                                    </button>
+                                    @if (!string.IsNullOrWhiteSpace(Model.Settings.UserBotToken))
+                                    {
+                                        <button class="btn btn-outline-danger btn-sm" type="submit" asp-page-handler="ClearUserBotToken" onclick="return confirm('آیا از حذف توکن ربات کاربر اطمینان دارید؟');">
+                                            <i class="fas fa-trash-alt me-1"></i> حذف
+                                        </button>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(Model.Settings.UserBotToken))
+                                {
+                                    <small class="text-success fw-bold d-block mt-1">
+                                        <i class="fas fa-shield-alt me-1"></i> توکن ربات کاربر ذخیره است.
+                                    </small>
+                                }
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">
+                                    <i class="fas fa-credit-card text-success me-1"></i> توکن پذیرنده پرداخت بله (Payment Provider Token):
+                                </label>
+                                <input type="text" class="form-control form-control-sm font-monospace" dir="ltr" asp-for="Settings.UserBotPaymentProviderToken" placeholder="WALLET-... یا برای تست: WALLET-TEST-1111111111111111" />
+                                <small class="text-muted">توکن کیف پول دریافتی از BotFather@@ برای قابلیت sendInvoice. برای محیط آزمایشی از <code>WALLET-TEST-1111111111111111</code> استفاده نمایید.</small>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">
+                                    <i class="fas fa-coins text-warning me-1"></i> هزینه ثبت‌نام و صدور شناسه یکتا (ریال):
+                                </label>
+                                <input type="number" class="form-control form-control-sm" asp-for="Settings.RegistrationFee" placeholder="5000000" />
+                                <small class="text-muted">مبلغی که متقاضی در فرآیند ثبت‌نام بله به صورت آنلاین پرداخت می‌کند (پیش‌فرض: ۵,۰۰۰,۰۰۰ ریال معادل ۵۰۰ هزار تومان).</small>
+                            </div>
+
+                            <div class="mb-2">
+                                <label class="form-label small fw-bold">آدرس وب‌هوک ربات کاربر (در صورت استفاده از وب‌هوک):</label>
+                                <input type="text" class="form-control form-control-sm" dir="ltr" readonly value="@Model.SuggestedUserWebhookUrl" />
+                                <small class="text-muted">در حالت پیش‌فرض (دریافت خودکار Polling)، نیازی به ثبت این آدرس در بله نیست.</small>
                             </div>
                         </div>
 

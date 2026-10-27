@@ -31,7 +31,20 @@ namespace Invoice.Pages.Admin.Bale
 
         public BaleBotInfo? BotInfo { get; set; }
 
+        public BaleBotInfo? UserBotInfo { get; set; }
+
         public List<BaleChatSummary> RecentChats { get; set; } = new();
+
+        public string SuggestedUserWebhookUrl
+        {
+            get
+            {
+                var baseUri = !string.IsNullOrWhiteSpace(Settings.BaseUrl)
+                    ? Settings.BaseUrl.TrimEnd('/')
+                    : $"{Request.Scheme}://{Request.Host}";
+                return $"{baseUri}/api/bale/user-webhook";
+            }
+        }
 
         [TempData]
         public string? StatusMessage { get; set; }
@@ -46,6 +59,11 @@ namespace Invoice.Pages.Admin.Bale
             if (!string.IsNullOrWhiteSpace(Settings.BotToken))
             {
                 BotInfo = await _settingsService.TestBotTokenAsync(Settings.BotToken);
+            }
+
+            if (!string.IsNullOrWhiteSpace(Settings.UserBotToken))
+            {
+                UserBotInfo = await _settingsService.TestBotTokenAsync(Settings.UserBotToken);
             }
         }
 
@@ -65,12 +83,36 @@ namespace Invoice.Pages.Admin.Bale
                     Settings.BotToken = Settings.BotToken.Trim();
                 }
 
+                if (string.IsNullOrWhiteSpace(Settings.UserBotToken))
+                {
+                    Settings.UserBotToken = existing.UserBotToken ?? string.Empty;
+                }
+                else
+                {
+                    Settings.UserBotToken = Settings.UserBotToken.Trim();
+                }
+
+                if (string.IsNullOrWhiteSpace(Settings.UserBotPaymentProviderToken))
+                {
+                    Settings.UserBotPaymentProviderToken = existing.UserBotPaymentProviderToken ?? string.Empty;
+                }
+                else
+                {
+                    Settings.UserBotPaymentProviderToken = Settings.UserBotPaymentProviderToken.Trim();
+                }
+
                 Settings.ChatId = Settings.ChatId?.Trim() ?? string.Empty;
                 Settings.BaseUrl = Settings.BaseUrl?.Trim() ?? string.Empty;
                 Settings.CustomTitle = string.IsNullOrWhiteSpace(Settings.CustomTitle) ? "سامانه صدور فاکتور" : Settings.CustomTitle.Trim();
                 Settings.UpdateMode = string.Equals(Settings.UpdateMode, "Webhook", StringComparison.OrdinalIgnoreCase) ? "Webhook" : "Polling";
                 Settings.AdminChatIds = Settings.AdminChatIds?.Trim() ?? string.Empty;
                 Settings.WebhookSecretToken = Settings.WebhookSecretToken?.Trim() ?? string.Empty;
+                Settings.UserBotWebhookSecret = Settings.UserBotWebhookSecret?.Trim() ?? string.Empty;
+
+                if (Settings.RegistrationFee <= 0)
+                {
+                    Settings.RegistrationFee = 5000000;
+                }
 
                 await _settingsService.SaveSettingsAsync(Settings);
                 StatusMessage = "تنظیمات پیام‌رسان بله با موفقیت ذخیره شد.";
@@ -82,6 +124,56 @@ namespace Invoice.Pages.Admin.Bale
             }
 
             return RedirectToPage();
+        }
+
+        public async Task<IActionResult> OnPostClearUserBotTokenAsync()
+        {
+            try
+            {
+                var existing = await _settingsService.GetSettingsAsync();
+                existing.UserBotToken = string.Empty;
+                await _settingsService.SaveSettingsAsync(existing);
+                StatusMessage = "توکن ربات کاربر با موفقیت حذف گردید.";
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "خطا در حذف توکن ربات کاربر بله");
+                ErrorMessage = $"خطا در حذف توکن ربات کاربر: {ex.Message}";
+            }
+
+            return RedirectToPage();
+        }
+
+        public async Task<IActionResult> OnPostTestUserBotTokenAsync()
+        {
+            var saved = await _settingsService.GetSettingsAsync();
+            var token = Settings?.UserBotToken?.Trim();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                token = saved.UserBotToken?.Trim();
+            }
+
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                ErrorMessage = "لطفاً ابتدا توکن ربات کاربر بله را وارد نمایید.";
+                Settings = saved;
+                return Page();
+            }
+
+            var info = await _settingsService.TestBotTokenAsync(token);
+            UserBotInfo = info;
+            if (info.Success)
+            {
+                StatusMessage = $"توکن ربات کاربر معتبر است. مشخصات: {info.FirstName} (شناسه: @{info.Username} - شناسه عددی: {info.Id})";
+                Settings.UserBotToken = token;
+            }
+            else
+            {
+                ErrorMessage = $"خطا در بررسی توکن ربات کاربر: {info.ErrorMessage}";
+                Settings.UserBotToken = token;
+            }
+
+            return Page();
         }
 
         public async Task<IActionResult> OnPostClearTokenAsync()

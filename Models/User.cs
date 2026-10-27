@@ -51,6 +51,13 @@ namespace Invoices.Models
 
         [Display(Name = "هزینه هر فاکتور (ریال)")]
         public int PerInvoiceCost { get; set; }
+
+        [Display(Name = "شناسه چت بله")]
+        public string? BaleChatId { get; set; }
+
+        [Display(Name = "نام کاربری بله")]
+        public string? BaleUsername { get; set; }
+
         public string DisplayName
         {
             get
