@@ -198,6 +198,64 @@
                             </div>
                         </div>
 
+                        <!-- بخش مدیریت تعاملی و تایید/رد درخواست‌ها -->
+                        <div class="card bg-white border border-primary border-opacity-25 p-3 mb-3 shadow-sm rounded-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label fw-bold text-primary mb-0">
+                                    <i class="fas fa-hand-pointer me-1"></i> تایید و رد درخواست‌ها از داخل بله (تعاملی)
+                                </label>
+                                <div class="form-check form-switch m-0">
+                                    <input class="form-check-input" type="checkbox" asp-for="Settings.BotInteractivityEnabled" id="botInteractivitySwitch">
+                                </div>
+                            </div>
+                            <small class="text-muted mb-3 d-block">
+                                با فعال‌سازی این قابلیت، دکمه‌های شیشه‌ای «تایید» و «رد» زیر هر اعلان در پیام‌رسان بله نمایش داده می‌شوند و مدیر می‌تواند با یک کلیک درخواست را بررسی و تایید یا رد نماید.
+                            </small>
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">حالت دریافت دستورات و پاسخ به کلیک‌ها:</label>
+                                <div class="d-flex flex-column gap-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" asp-for="Settings.UpdateMode" value="Polling" id="modePolling">
+                                        <label class="form-check-label small" for="modePolling">
+                                            <strong>دریافت خودکار در پس‌زمینه (Polling)</strong> <span class="badge bg-success ms-1">پیشنهادی</span>
+                                            <div class="text-muted small">نیازی به دامنه عمومی یا آی‌پی ثابت ندارد و در همه سرورها و لوکال کار می‌کند.</div>
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" asp-for="Settings.UpdateMode" value="Webhook" id="modeWebhook">
+                                        <label class="form-check-label small" for="modeWebhook">
+                                            <strong>وب‌هوک (Webhook)</strong>
+                                            <div class="text-muted small">ارسال آنی توسط سرور بله؛ نیازمند دامنه عمومی با گواهی معتبر HTTPS است.</div>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">
+                                    <i class="fas fa-user-shield text-secondary me-1"></i> شناسه‌های مجاز مدیران (اختیاری):
+                                </label>
+                                <input type="text" class="form-control form-control-sm" dir="ltr" asp-for="Settings.AdminChatIds" placeholder="1986328345, 987654321" />
+                                <small class="text-muted">در صورتی که اعلان‌ها به گروه ارسال می‌شوند، شناسه‌های عددی کاربری مدیران را با کاما جدا کنید تا فقط افراد مجاز دسترسی داشته باشند.</small>
+                            </div>
+
+                            <div class="border-top pt-2 mt-2">
+                                <div class="d-flex justify-content-between align-items-center mb-1">
+                                    <span class="small fw-bold text-muted">آدرس وب‌هوک سیستم:</span>
+                                    <code class="small" dir="ltr">@Model.SuggestedWebhookUrl</code>
+                                </div>
+                                <div class="btn-group btn-group-sm w-100 mt-2">
+                                    <button type="submit" asp-page-handler="SetWebhook" class="btn btn-outline-primary" title="ثبت وب‌هوک در سرور بله">
+                                        <i class="fas fa-cloud-upload-alt me-1"></i> ثبت وب‌هوک در بله
+                                    </button>
+                                    <button type="submit" asp-page-handler="DeleteWebhook" class="btn btn-outline-secondary" title="حذف وب‌هوک و سوئیچ به Polling">
+                                        <i class="fas fa-sync-alt me-1"></i> سوئیچ به دریافت خودکار (Polling)
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="d-flex justify-content-between align-items-center pt-2">
                             <button type="submit" asp-page-handler="Save" class="btn btn-primary px-4">
                                 <i class="fas fa-save me-1"></i> ذخیره تنظیمات
@@ -272,6 +330,23 @@
                     <div class="alert alert-light border small mt-3 mb-0">
                         <i class="fas fa-users text-primary me-1"></i>
                         <strong>ارسال به گروه یا کانال:</strong> برای ارسال اعلان‌ها به گروه، ربات را به گروه اضافه کرده و مدیر کنید، سپس یک پیام در گروه بفرستید تا Chat ID گروه شناسایی شود.
+                    </div>
+
+                    <div class="card bg-light border-0 mt-3 p-3 small">
+                        <h6 class="fw-bold text-success mb-2">
+                            <i class="fas fa-check-double me-1"></i> نحوه تایید و رد درخواست‌ها از بله:
+                        </h6>
+                        <ul class="list-unstyled mb-0 text-muted">
+                            <li class="mb-1">
+                                🔘 <strong>دکمه‌های شیشه‌ای:</strong> در پایین هر پیام اعلان، دکمه‌های <span class="badge bg-success">✅ تایید</span> و <span class="badge bg-danger">❌ رد</span> قرار دارند که با لمس آن‌ها در بله بلافاصله اعمال می‌شوند.
+                            </li>
+                            <li class="mb-1">
+                                💬 <strong>دستور متنی:</strong> می‌توانید با ارسال دستوراتی مانند <code dir="ltr">تایید کیف پول 12</code> یا <code dir="ltr">رد کارپوشه 5</code> مستقیماً اقدام کنید.
+                            </li>
+                            <li>
+                                📊 <strong>گزارش وضعیت:</strong> ارسال <code dir="ltr">/pending</code> یا <code dir="ltr">درخواست‌ها</code> آمار درخواست‌های در انتظار را نمایش می‌دهد.
+                            </li>
+                        </ul>
                     </div>
                 </div>
             </div>

@@ -14,6 +14,12 @@ namespace Invoice.Code
         public bool NotifyOnCreditPlanRequest { get; set; } = true;
         public bool NotifyOnUserRegister { get; set; } = true;
         public string CustomTitle { get; set; } = "سامانه صدور فاکتور";
+
+        // تنظیمات تایید و رد درخواست‌ها از طریق پیام‌رسان بله
+        public bool BotInteractivityEnabled { get; set; } = true;
+        public string UpdateMode { get; set; } = "Polling"; // "Polling" یا "Webhook"
+        public string WebhookSecretToken { get; set; } = string.Empty;
+        public string AdminChatIds { get; set; } = string.Empty;
     }
 
     public class BaleBotInfo

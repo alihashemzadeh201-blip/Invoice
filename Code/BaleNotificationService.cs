@@ -16,11 +16,14 @@ namespace Invoice.Code
     public interface IBaleNotificationService
     {
         Task<bool> SendMessageAsync(string text, string? chatId = null, string parseMode = "HTML", CancellationToken ct = default);
+        Task<bool> SendMessageAsync(string text, string? chatId, string parseMode, object? replyMarkup, CancellationToken ct = default);
         Task<bool> SendTestNotificationAsync(string? targetChatId = null, CancellationToken ct = default);
         Task SendKarpooshehRequestNotificationAsync(KarpooshehRequest request, CancellationToken ct = default);
         Task SendWalletRequestNotificationAsync(Transaction transaction, CancellationToken ct = default);
         Task SendCreditPlanRequestNotificationAsync(CreditRequest request, CancellationToken ct = default);
         Task SendUserRegisteredNotificationAsync(User user, CancellationToken ct = default);
+        Task<bool> AnswerCallbackQueryAsync(string callbackQueryId, string? text = null, bool showAlert = false, CancellationToken ct = default);
+        Task<bool> EditMessageTextAsync(string chatId, long messageId, string text, string parseMode = "HTML", object? replyMarkup = null, CancellationToken ct = default);
     }
 
     public class BaleNotificationService : IBaleNotificationService
@@ -101,7 +104,12 @@ namespace Invoice.Code
             return $"{baseUrl}{path}";
         }
 
-        public async Task<bool> SendMessageAsync(string text, string? chatId = null, string parseMode = "HTML", CancellationToken ct = default)
+        public Task<bool> SendMessageAsync(string text, string? chatId = null, string parseMode = "HTML", CancellationToken ct = default)
+        {
+            return SendMessageAsync(text, chatId, parseMode, null, ct);
+        }
+
+        public async Task<bool> SendMessageAsync(string text, string? chatId, string parseMode, object? replyMarkup, CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
 
@@ -127,7 +135,17 @@ namespace Invoice.Code
                 var client = _httpClientFactory.CreateClient("BaleClient");
                 var url = $"https://tapi.bale.ai/bot{effectiveToken}/sendMessage";
 
-                var payload = new { chat_id = effectiveChatId, text = text, parse_mode = parseMode };
+                var payload = new Dictionary<string, object>
+                {
+                    ["chat_id"] = effectiveChatId,
+                    ["text"] = text,
+                    ["parse_mode"] = parseMode
+                };
+                if (replyMarkup != null)
+                {
+                    payload["reply_markup"] = replyMarkup;
+                }
+
                 using var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
                 var response = await client.PostAsync(url, content, ct);
@@ -139,7 +157,16 @@ namespace Invoice.Code
 
                 if (response.StatusCode == HttpStatusCode.BadRequest && !string.IsNullOrEmpty(parseMode))
                 {
-                    var fallbackPayload = new { chat_id = effectiveChatId, text = StripHtmlTags(text) };
+                    var fallbackPayload = new Dictionary<string, object>
+                    {
+                        ["chat_id"] = effectiveChatId,
+                        ["text"] = StripHtmlTags(text)
+                    };
+                    if (replyMarkup != null)
+                    {
+                        fallbackPayload["reply_markup"] = replyMarkup;
+                    }
+
                     using var fallbackContent = new StringContent(JsonSerializer.Serialize(fallbackPayload), Encoding.UTF8, "application/json");
                     var retryResponse = await client.PostAsync(url, fallbackContent, ct);
                     if (retryResponse.IsSuccessStatusCode) return true;
@@ -155,6 +182,99 @@ namespace Invoice.Code
                 return false;
             }
         }
+        public async Task<bool> AnswerCallbackQueryAsync(string callbackQueryId, string? text = null, bool showAlert = false, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(callbackQueryId)) return false;
+
+            try
+            {
+                var settings = await _settingsService.GetSettingsAsync();
+                var effectiveToken = settings.BotToken?.Trim();
+                if (string.IsNullOrWhiteSpace(effectiveToken)) return false;
+
+                var client = _httpClientFactory.CreateClient("BaleClient");
+                var url = $"https://tapi.bale.ai/bot{effectiveToken}/answerCallbackQuery";
+
+                var payload = new Dictionary<string, object>
+                {
+                    ["callback_query_id"] = callbackQueryId
+                };
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    payload["text"] = text.Trim();
+                    payload["show_alert"] = showAlert;
+                }
+
+                using var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                var response = await client.PostAsync(url, content, ct);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "خطا در ارسال answerCallbackQuery به پیام‌رسان بله.");
+                return false;
+            }
+        }
+
+        public async Task<bool> EditMessageTextAsync(string chatId, long messageId, string text, string parseMode = "HTML", object? replyMarkup = null, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(chatId) || string.IsNullOrWhiteSpace(text) || messageId <= 0) return false;
+
+            try
+            {
+                var settings = await _settingsService.GetSettingsAsync();
+                var effectiveToken = settings.BotToken?.Trim();
+                if (string.IsNullOrWhiteSpace(effectiveToken)) return false;
+
+                var client = _httpClientFactory.CreateClient("BaleClient");
+                var url = $"https://tapi.bale.ai/bot{effectiveToken}/editMessageText";
+
+                var payload = new Dictionary<string, object>
+                {
+                    ["chat_id"] = chatId.Trim(),
+                    ["message_id"] = messageId,
+                    ["text"] = text,
+                    ["parse_mode"] = parseMode
+                };
+                if (replyMarkup != null)
+                {
+                    payload["reply_markup"] = replyMarkup;
+                }
+                else
+                {
+                    payload["reply_markup"] = new { inline_keyboard = Array.Empty<object>() };
+                }
+
+                using var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                var response = await client.PostAsync(url, content, ct);
+                if (response.IsSuccessStatusCode) return true;
+
+                if (response.StatusCode == HttpStatusCode.BadRequest && !string.IsNullOrEmpty(parseMode))
+                {
+                    payload["text"] = StripHtmlTags(text);
+                    payload.Remove("parse_mode");
+                    using var fallbackContent = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                    var retryResponse = await client.PostAsync(url, fallbackContent, ct);
+                    return retryResponse.IsSuccessStatusCode;
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "خطا در ویرایش پیام در پیام‌رسان بله.");
+                return false;
+            }
+        }
+
+        private static bool IsValidHttpUrl(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return false;
+            return Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+                   (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps) &&
+                   !uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase);
+        }
+
         public async Task<bool> SendTestNotificationAsync(string? targetChatId = null, CancellationToken ct = default)
         {
             var nowShamsi = MyDate.GetPersianDate(DateTime.Now)?.ToString() ?? DateTime.Now.ToString("yyyy/MM/dd HH:mm");
@@ -206,7 +326,28 @@ namespace Invoice.Code
 🔗 <b>شناسه درخواست:</b> #{request.Id}
 🔗 <a href=""{targetUrl}"">مشاهده و بررسی درخواست کارپوشه</a>";
 
-                await SendMessageAsync(message, null, "HTML", ct);
+                object? replyMarkup = null;
+                if (settings.BotInteractivityEnabled && request.Id > 0)
+                {
+                    var keyboard = new List<List<object>>
+                    {
+                        new List<object>
+                        {
+                            new { text = "✅ تایید / ثبت دریافت", callback_data = $"karpoosheh:approve:{request.Id}" },
+                            new { text = "❌ رد درخواست", callback_data = $"karpoosheh:reject:{request.Id}" }
+                        }
+                    };
+                    if (IsValidHttpUrl(targetUrl))
+                    {
+                        keyboard.Add(new List<object>
+                        {
+                            new { text = "🔗 مشاهده در پنل مدیریت", url = targetUrl }
+                        });
+                    }
+                    replyMarkup = new { inline_keyboard = keyboard };
+                }
+
+                await SendMessageAsync(message, null, "HTML", replyMarkup, ct);
             }
             catch (Exception ex)
             {
@@ -243,9 +384,30 @@ namespace Invoice.Code
 📝 <b>توضیحات:</b> {HtmlSafe(transaction.Description)}
 📅 <b>تاریخ ثبت:</b> {HtmlSafe(nowShamsi)}
 🔗 <b>شناسه تراکنش:</b> #{transaction.Id}
-🔗 <a href=""{targetUrl}"">بررسی و تایید تراکنش کیف پول</a>";
+🔗 ";
 
-                await SendMessageAsync(message, null, "HTML", ct);
+                object? replyMarkup = null;
+                if (settings.BotInteractivityEnabled && transaction.Id > 0)
+                {
+                    var keyboard = new List<List<object>>
+                    {
+                        new List<object>
+                        {
+                            new { text = "✅ تایید", callback_data = $"wallet:approve:{transaction.Id}" },
+                            new { text = "❌ رد درخواست", callback_data = $"wallet:reject:{transaction.Id}" }
+                        }
+                    };
+                    if (IsValidHttpUrl(targetUrl))
+                    {
+                        keyboard.Add(new List<object>
+                        {
+                            new { text = "🔗 مشاهده در پنل مدیریت", url = targetUrl }
+                        });
+                    }
+                    replyMarkup = new { inline_keyboard = keyboard };
+                }
+
+                await SendMessageAsync(message, null, "HTML", replyMarkup, ct);
             }
             catch (Exception ex)
             {
@@ -280,7 +442,28 @@ namespace Invoice.Code
 🔗 <b>شناسه:</b> #{request.Id}
 🔗 <a href=""{targetUrl}"">مشاهده و مدیریت اعتبار کاربر</a>";
 
-                await SendMessageAsync(message, null, "HTML", ct);
+                object? replyMarkup = null;
+                if (settings.BotInteractivityEnabled && request.Id > 0)
+                {
+                    var keyboard = new List<List<object>>
+                    {
+                        new List<object>
+                        {
+                            new { text = "✅ تایید و تمدید دوره", callback_data = $"credit:approve:{request.Id}" },
+                            new { text = "❌ رد درخواست", callback_data = $"credit:reject:{request.Id}" }
+                        }
+                    };
+                    if (IsValidHttpUrl(targetUrl))
+                    {
+                        keyboard.Add(new List<object>
+                        {
+                            new { text = "🔗 مدیریت کاربر در پنل", url = targetUrl }
+                        });
+                    }
+                    replyMarkup = new { inline_keyboard = keyboard };
+                }
+
+                await SendMessageAsync(message, null, "HTML", replyMarkup, ct);
             }
             catch (Exception ex)
             {

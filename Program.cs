@@ -25,7 +25,18 @@ builder.Services.AddRazorPages(options =>
 }).AddRazorRuntimeCompilation();
 builder.Services.AddControllers(); // Enables MVC
 var connection = builder.Configuration.GetConnectionString("default");
-builder.Services.AddDbContext<DataContext>(p => p.UseSqlServer(connection));
+builder.Services.AddDbContext<DataContext>(options =>
+{
+    options.UseSqlServer(connection, sqlOptions =>
+    {
+        // تاب‌آوری اتصال (Connection Resiliency) برای جلوگیری از خطاهای زودگذر شبکه و قطع ناگهانی هندشیک SQL
+        sqlOptions.EnableRetryOnFailure(
+            maxRetryCount: 5,
+            maxRetryDelay: TimeSpan.FromSeconds(10),
+            errorNumbersToAdd: new[] { 0, 10054, 10053, 4060, 40197, 40501, 40613, 49918, 49919, 49920, 11001 });
+        sqlOptions.CommandTimeout(60);
+    });
+});
 builder.Services.AddScoped<ISelectedProfile, SelectedProfile>();
 builder.Services.AddScoped<IImportTemplateService, ImportTemplateService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
@@ -42,6 +53,9 @@ builder.Services.AddHttpClient("BaleClient", client =>
 });
 builder.Services.AddSingleton<IBaleSettingsService, BaleSettingsService>();
 builder.Services.AddScoped<IBaleNotificationService, BaleNotificationService>();
+builder.Services.AddScoped<IBaleBotActionService, BaleBotActionService>();
+builder.Services.AddScoped<IBaleUpdateProcessor, BaleUpdateProcessor>();
+builder.Services.AddHostedService<BaleBotBackgroundService>();
 
 // محدودسازی تلاش‌های ناموفق ورود (محافظت در برابر بروت‌فورس)
 builder.Services.AddMemoryCache();

@@ -473,5 +473,82 @@ namespace Invoice.Tests
             Assert.Contains("https://dynamic.myhost.com:8443/Admin/Requests/Details?id=77", text);
         }
 
+        [Fact]
+        public async Task SendWalletRequestNotificationAsync_WhenInteractivityEnabled_IncludesInlineKeyboard()
+        {
+            _settingsServiceMock.Setup(s => s.GetSettingsAsync())
+                .ReturnsAsync(new BaleSettings
+                {
+                    Enabled = true,
+                    BotToken = "token123",
+                    ChatId = "chat123",
+                    NotifyOnWalletRequest = true,
+                    BotInteractivityEnabled = true
+                });
+
+            var service = new BaleNotificationService(_httpClientFactoryMock.Object, _settingsServiceMock.Object, _loggerMock.Object);
+            var trans = new Transaction
+            {
+                Id = 101,
+                CustomerUsername = "userTest",
+                Price = 500000,
+                SourceCardNumber = "6037991122334455"
+            };
+
+            await service.SendWalletRequestNotificationAsync(trans);
+
+            Assert.NotNull(_httpHandler.LastRequestBody);
+            var doc = JsonDocument.Parse(_httpHandler.LastRequestBody);
+            Assert.True(doc.RootElement.TryGetProperty("reply_markup", out var replyMarkup));
+            var keyboard = replyMarkup.GetProperty("inline_keyboard");
+            var firstRow = keyboard[0];
+            Assert.Contains("wallet:approve:101", firstRow[0].GetProperty("callback_data").GetString());
+            Assert.Contains("wallet:reject:101", firstRow[1].GetProperty("callback_data").GetString());
+        }
+
+        [Fact]
+        public async Task AnswerCallbackQueryAsync_SendsCorrectPayload()
+        {
+            _settingsServiceMock.Setup(s => s.GetSettingsAsync())
+                .ReturnsAsync(new BaleSettings
+                {
+                    BotToken = "test_token"
+                });
+
+            var service = new BaleNotificationService(_httpClientFactoryMock.Object, _settingsServiceMock.Object, _loggerMock.Object);
+            var result = await service.AnswerCallbackQueryAsync("cq_999", "عملیات انجام شد", showAlert: false);
+
+            Assert.True(result);
+            Assert.NotNull(_httpHandler.LastRequest);
+            Assert.Equal("https://tapi.bale.ai/bottest_token/answerCallbackQuery", _httpHandler.LastRequest.RequestUri?.ToString());
+            var doc = JsonDocument.Parse(_httpHandler.LastRequestBody!);
+            Assert.Equal("cq_999", doc.RootElement.GetProperty("callback_query_id").GetString());
+            Assert.Equal("عملیات انجام شد", doc.RootElement.GetProperty("text").GetString());
+            Assert.False(doc.RootElement.GetProperty("show_alert").GetBoolean());
+        }
+
+        [Fact]
+        public async Task EditMessageTextAsync_SendsCorrectPayloadAndClearsMarkupByDefault()
+        {
+            _settingsServiceMock.Setup(s => s.GetSettingsAsync())
+                .ReturnsAsync(new BaleSettings
+                {
+                    BotToken = "test_token"
+                });
+
+            var service = new BaleNotificationService(_httpClientFactoryMock.Object, _settingsServiceMock.Object, _loggerMock.Object);
+            var result = await service.EditMessageTextAsync("chat_456", 789, "متن ویرایش شده");
+
+            Assert.True(result);
+            Assert.NotNull(_httpHandler.LastRequest);
+            Assert.Equal("https://tapi.bale.ai/bottest_token/editMessageText", _httpHandler.LastRequest.RequestUri?.ToString());
+            var doc = JsonDocument.Parse(_httpHandler.LastRequestBody!);
+            Assert.Equal("chat_456", doc.RootElement.GetProperty("chat_id").GetString());
+            Assert.Equal(789, doc.RootElement.GetProperty("message_id").GetInt64());
+            Assert.Equal("متن ویرایش شده", doc.RootElement.GetProperty("text").GetString());
+            Assert.True(doc.RootElement.TryGetProperty("reply_markup", out var replyMarkup));
+            Assert.Equal(0, replyMarkup.GetProperty("inline_keyboard").GetArrayLength());
+        }
+
     }
 }

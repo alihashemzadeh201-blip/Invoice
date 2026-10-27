@@ -18,6 +18,8 @@ namespace Invoice.Code
         Task SaveSettingsAsync(BaleSettings settings);
         Task<BaleBotInfo> TestBotTokenAsync(string? token = null, CancellationToken ct = default);
         Task<List<BaleChatSummary>> GetRecentChatsAsync(string? token = null, CancellationToken ct = default);
+        Task<bool> SetWebhookAsync(string webhookUrl, string? secretToken = null, CancellationToken ct = default);
+        Task<bool> DeleteWebhookAsync(CancellationToken ct = default);
     }
 
     public class BaleSettingsService : IBaleSettingsService
@@ -84,7 +86,11 @@ namespace Invoice.Code
                     NotifyOnWalletRequest = !bool.TryParse(_configuration["Bale:NotifyOnWalletRequest"], out var nw) || nw,
                     NotifyOnCreditPlanRequest = !bool.TryParse(_configuration["Bale:NotifyOnCreditPlanRequest"], out var nc) || nc,
                     NotifyOnUserRegister = !bool.TryParse(_configuration["Bale:NotifyOnUserRegister"], out var nu) || nu,
-                    CustomTitle = _configuration["Bale:CustomTitle"] ?? "سامانه صدور فاکتور"
+                    CustomTitle = _configuration["Bale:CustomTitle"] ?? "سامانه صدور فاکتور",
+                    BotInteractivityEnabled = !bool.TryParse(_configuration["Bale:BotInteractivityEnabled"], out var bi) || bi,
+                    UpdateMode = _configuration["Bale:UpdateMode"] ?? "Polling",
+                    WebhookSecretToken = _configuration["Bale:WebhookSecretToken"] ?? string.Empty,
+                    AdminChatIds = _configuration["Bale:AdminChatIds"] ?? string.Empty
                 };
 
                 _cachedSettings = fallback;
@@ -279,6 +285,75 @@ namespace Invoice.Code
             }
 
             return results;
+        }
+
+        public async Task<bool> SetWebhookAsync(string webhookUrl, string? secretToken = null, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(webhookUrl)) return false;
+
+            var settings = await GetSettingsAsync();
+            if (string.IsNullOrWhiteSpace(settings.BotToken)) return false;
+
+            try
+            {
+                var client = _httpClientFactory.CreateClient("BaleClient");
+                var url = $"https://tapi.bale.ai/bot{settings.BotToken.Trim()}/setWebhook";
+
+                var payload = new Dictionary<string, object>
+                {
+                    ["url"] = webhookUrl.Trim()
+                };
+                if (!string.IsNullOrWhiteSpace(secretToken))
+                {
+                    payload["secret_token"] = secretToken.Trim();
+                }
+
+                using var content = new StringContent(JsonSerializer.Serialize(payload), System.Text.Encoding.UTF8, "application/json");
+                var response = await client.PostAsync(url, content, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("وب‌هوک بله با موفقیت در آدرس {Url} ثبت گردید.", webhookUrl);
+                    return true;
+                }
+
+                var error = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("تنظیم وب‌هوک بله با خطا مواجه شد: وضعیت {Status} - {Response}", response.StatusCode, error);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "استثنا در تنظیم وب‌هوک پیام‌رسان بله.");
+                return false;
+            }
+        }
+
+        public async Task<bool> DeleteWebhookAsync(CancellationToken ct = default)
+        {
+            var settings = await GetSettingsAsync();
+            if (string.IsNullOrWhiteSpace(settings.BotToken)) return false;
+
+            try
+            {
+                var client = _httpClientFactory.CreateClient("BaleClient");
+                var url = $"https://tapi.bale.ai/bot{settings.BotToken.Trim()}/deleteWebhook";
+
+                using var content = new StringContent("{}", System.Text.Encoding.UTF8, "application/json");
+                var response = await client.PostAsync(url, content, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    _logger.LogInformation("وب‌هوک بله با موفقیت حذف گردید.");
+                    return true;
+                }
+
+                var error = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("حذف وب‌هوک بله با خطا مواجه شد: وضعیت {Status} - {Response}", response.StatusCode, error);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "استثنا در حذف وب‌هوک پیام‌رسان بله.");
+                return false;
+            }
         }
     }
 }

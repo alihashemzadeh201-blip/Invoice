@@ -68,6 +68,9 @@ namespace Invoice.Pages.Admin.Bale
                 Settings.ChatId = Settings.ChatId?.Trim() ?? string.Empty;
                 Settings.BaseUrl = Settings.BaseUrl?.Trim() ?? string.Empty;
                 Settings.CustomTitle = string.IsNullOrWhiteSpace(Settings.CustomTitle) ? "سامانه صدور فاکتور" : Settings.CustomTitle.Trim();
+                Settings.UpdateMode = string.Equals(Settings.UpdateMode, "Webhook", StringComparison.OrdinalIgnoreCase) ? "Webhook" : "Polling";
+                Settings.AdminChatIds = Settings.AdminChatIds?.Trim() ?? string.Empty;
+                Settings.WebhookSecretToken = Settings.WebhookSecretToken?.Trim() ?? string.Empty;
 
                 await _settingsService.SaveSettingsAsync(Settings);
                 StatusMessage = "تنظیمات پیام‌رسان بله با موفقیت ذخیره شد.";
@@ -185,6 +188,87 @@ namespace Invoice.Pages.Admin.Bale
             BotInfo = await _settingsService.TestBotTokenAsync(token);
             Settings.BotToken = token;
             return Page();
+        }
+
+        public string SuggestedWebhookUrl
+        {
+            get
+            {
+                var baseU = Settings?.BaseUrl?.Trim();
+                if (string.IsNullOrEmpty(baseU))
+                {
+                    try
+                    {
+                        baseU = $"{Request.Scheme}://{Request.Host.Value}".TrimEnd('/');
+                    }
+                    catch
+                    {
+                        baseU = "https://yourdomain.com";
+                    }
+                }
+                return $"{baseU.TrimEnd('/')}/api/bale/webhook";
+            }
+        }
+
+        public async Task<IActionResult> OnPostSetWebhookAsync()
+        {
+            var saved = await _settingsService.GetSettingsAsync();
+            var effectiveToken = !string.IsNullOrWhiteSpace(Settings?.BotToken) ? Settings.BotToken.Trim() : saved.BotToken?.Trim();
+            if (string.IsNullOrWhiteSpace(effectiveToken))
+            {
+                ErrorMessage = "لطفاً ابتدا توکن ربات بله را وارد و ذخیره کنید.";
+                return RedirectToPage();
+            }
+
+            var baseUrl = !string.IsNullOrWhiteSpace(Settings?.BaseUrl) ? Settings.BaseUrl.Trim() : saved.BaseUrl?.Trim();
+            if (string.IsNullOrWhiteSpace(baseUrl))
+            {
+                baseUrl = $"{Request.Scheme}://{Request.Host.Value}".TrimEnd('/');
+            }
+
+            if (!baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                ErrorMessage = "برای ثبت وب‌هوک، آدرس دامنه سامانه (Base URL) حتماً باید با پروتکل امن https آغاز شود.";
+                return RedirectToPage();
+            }
+
+            var webhookUrl = $"{baseUrl.TrimEnd('/')}/api/bale/webhook";
+            var secretToken = !string.IsNullOrWhiteSpace(Settings?.WebhookSecretToken)
+                ? Settings.WebhookSecretToken.Trim()
+                : saved.WebhookSecretToken?.Trim();
+
+            var success = await _settingsService.SetWebhookAsync(webhookUrl, secretToken);
+            if (success)
+            {
+                saved.UpdateMode = "Webhook";
+                saved.BaseUrl = baseUrl;
+                if (!string.IsNullOrWhiteSpace(secretToken)) saved.WebhookSecretToken = secretToken;
+                await _settingsService.SaveSettingsAsync(saved);
+                StatusMessage = $"وب‌هوک ربات با موفقیت در آدرس {webhookUrl} ثبت شد و حالت دریافت به Webhook تغییر یافت.";
+            }
+            else
+            {
+                ErrorMessage = "ثبت وب‌هوک با خطا مواجه شد. لطفاً توکن ربات و در دسترس بودن دامنه HTTPS را بررسی کنید.";
+            }
+
+            return RedirectToPage();
+        }
+
+        public async Task<IActionResult> OnPostDeleteWebhookAsync()
+        {
+            var saved = await _settingsService.GetSettingsAsync();
+            var success = await _settingsService.DeleteWebhookAsync();
+            if (success)
+            {
+                saved.UpdateMode = "Polling";
+                await _settingsService.SaveSettingsAsync(saved);
+                StatusMessage = "وب‌هوک با موفقیت حذف گردید و حالت دریافت به خودکار (Polling) بازگردانده شد.";
+            }
+            else
+            {
+                ErrorMessage = "حذف وب‌هوک با خطا مواجه شد.";
+            }
+            return RedirectToPage();
         }
     }
 }
