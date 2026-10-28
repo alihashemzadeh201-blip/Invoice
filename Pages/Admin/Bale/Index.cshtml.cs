@@ -14,16 +14,19 @@ namespace Invoice.Pages.Admin.Bale
     {
         private readonly IBaleSettingsService _settingsService;
         private readonly IBaleNotificationService _notificationService;
+        private readonly IBaleUserBotService? _userBotService;
         private readonly ILogger<IndexModel> _logger;
 
         public IndexModel(
             IBaleSettingsService settingsService,
             IBaleNotificationService notificationService,
-            ILogger<IndexModel> logger)
+            ILogger<IndexModel> logger,
+            IBaleUserBotService? userBotService = null)
         {
             _settingsService = settingsService;
             _notificationService = notificationService;
             _logger = logger;
+            _userBotService = userBotService;
         }
 
         [BindProperty]
@@ -34,6 +37,10 @@ namespace Invoice.Pages.Admin.Bale
         public BaleBotInfo? UserBotInfo { get; set; }
 
         public List<BaleChatSummary> RecentChats { get; set; } = new();
+
+        public int TotalBaleUsersCount { get; set; }
+
+        public List<string> AvailableUserChatIds { get; set; } = new();
 
         public string SuggestedUserWebhookUrl
         {
@@ -64,6 +71,12 @@ namespace Invoice.Pages.Admin.Bale
             if (!string.IsNullOrWhiteSpace(Settings.UserBotToken))
             {
                 UserBotInfo = await _settingsService.TestBotTokenAsync(Settings.UserBotToken);
+            }
+
+            if (_userBotService != null)
+            {
+                AvailableUserChatIds = await _userBotService.GetAllUserChatIdsAsync();
+                TotalBaleUsersCount = AvailableUserChatIds.Count;
             }
         }
 

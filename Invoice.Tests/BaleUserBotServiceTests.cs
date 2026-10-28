@@ -242,18 +242,18 @@ namespace Invoice.Tests
             await _service.ProcessUpdateAsync(jobUpdate);
 
             state = await _context.BaleUserStates.FindAsync(chatId);
-            Assert.Equal("Reg_PostalCode", state!.CurrentStep);
+            Assert.Equal("Reg_UsernameChoice", state!.CurrentStep);
 
-            // 8. ارسال کد پستی معتبر ۱۰ رقمی
-            var postUpdate = ParseJson($@"{{
-                ""message"": {{
-                    ""message_id"": 8,
-                    ""from"": {{ ""id"": {chatId} }},
-                    ""chat"": {{ ""id"": {chatId} }},
-                    ""text"": ""1987654321""
+            // 8. انتخاب نام کاربری (شماره همراه)
+            var unChoiceUpdate = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_un"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""johndoe"" }},
+                    ""message"": {{ ""message_id"": 8, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""reg_un:phone""
                 }}
             }}");
-            await _service.ProcessUpdateAsync(postUpdate);
+            await _service.ProcessUpdateAsync(unChoiceUpdate);
 
             state = await _context.BaleUserStates.FindAsync(chatId);
             Assert.Equal("Reg_Confirm", state!.CurrentStep);
@@ -574,6 +574,153 @@ namespace Invoice.Tests
             Assert.Contains("09125556677", text);
             Assert.Contains("TempPass1234", text);
             Assert.Contains("تبریک! شناسه یکتای مالیاتی شما صادر شد", text);
+        }
+
+        [Fact]
+        public void ConvertHtmlToMarkdown_ConvertsTagsProperly()
+        {
+            var html = "💰 <b>کیف پول</b>\n• موجودی: <b> 30000 ریال </b>\nکد: <code>09121234567</code>\n<i>راهنما</i>";
+            var md = BaleUserBotService.ConvertHtmlToMarkdown(html);
+
+            Assert.DoesNotContain("<b>", md);
+            Assert.DoesNotContain("</b>", md);
+            Assert.DoesNotContain("<code>", md);
+            Assert.DoesNotContain("</code>", md);
+            Assert.DoesNotContain("<i>", md);
+            Assert.DoesNotContain("</i>", md);
+
+            Assert.Contains("*کیف پول*", md);
+            Assert.Contains("*30000 ریال*", md);
+            Assert.Contains("`09121234567`", md);
+            Assert.Contains("_راهنما_", md);
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_BackButton_GoesToPreviousStep()
+        {
+            var chatId = "889911";
+            var state = new BaleUserState
+            {
+                ChatId = chatId,
+                CurrentStep = "Reg_LatinName",
+                StateDataJson = JsonSerializer.Serialize(new Dictionary<string, string>
+                {
+                    ["PersonType"] = "Real",
+                    ["Name"] = "رضا احمدی"
+                }),
+                LastUpdated = DateTime.Now
+            };
+            _context.BaleUserStates.Add(state);
+            await _context.SaveChangesAsync();
+
+            var backUpdate = ParseJson($@"{{
+                ""message"": {{
+                    ""message_id"": 10,
+                    ""from"": {{ ""id"": {chatId} }},
+                    ""chat"": {{ ""id"": {chatId} }},
+                    ""text"": ""🔙 بازگشت""
+                }}
+            }}");
+
+            await _service.ProcessUpdateAsync(backUpdate);
+
+            var updatedState = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(updatedState);
+            Assert.Equal("Reg_Name", updatedState.CurrentStep);
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_CallbackCancelReg_CancelsOldRequestAndStartsNew()
+        {
+            var chatId = "332211";
+            var req = new KarpooshehRequest
+            {
+                Name = "شرکت تستی",
+                NationalId = "14009988771",
+                BaleChatId = chatId,
+                IsPaid = false,
+                FinishDate = null,
+                CancelDate = null
+            };
+            _context.KarpooshehRequests.Add(req);
+
+            var state = new BaleUserState
+            {
+                ChatId = chatId,
+                CurrentStep = "None",
+                LastUpdated = DateTime.Now
+            };
+            _context.BaleUserStates.Add(state);
+            await _context.SaveChangesAsync();
+
+            var cbUpdate = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_cancel_1"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""testuser"" }},
+                    ""message"": {{ ""message_id"": 20, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""cancel_reg:{req.Id}""
+                }}
+            }}");
+
+            await _service.ProcessUpdateAsync(cbUpdate);
+
+            var cancelledReq = await _context.KarpooshehRequests.FindAsync(req.Id);
+            Assert.NotNull(cancelledReq);
+            Assert.NotNull(cancelledReq.CancelDate);
+
+            var freshState = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(freshState);
+            Assert.Equal("Reg_PersonType", freshState.CurrentStep);
+        }
+
+        [Fact]
+        public async Task GetBaleUsersListAsync_AggregatesUsersRequestsAndStates()
+        {
+            var user = new User
+            {
+                Username = "09121110001",
+                BaleChatId = "chat_user_1",
+                BaleUsername = "userone",
+                Profile = new Profile { FirstName = "احمد", Lastname = "رضایی", TinCode = "0011223344" }
+            };
+            _context.Users.Add(user);
+
+            var req = new KarpooshehRequest
+            {
+                Name = "شرکت آوا",
+                Phone = "09121110002",
+                NationalId = "14001112233",
+                BaleChatId = "chat_req_2",
+                BaleUsername = "avatest"
+            };
+            _context.KarpooshehRequests.Add(req);
+
+            var state = new BaleUserState
+            {
+                ChatId = "chat_bot_3",
+                Username = "botuser3",
+                LastUpdated = DateTime.Now
+            };
+            _context.BaleUserStates.Add(state);
+            await _context.SaveChangesAsync();
+
+            var list = await _service.GetBaleUsersListAsync();
+
+            Assert.NotNull(list);
+            Assert.Contains(list, u => u.ChatId == "chat_user_1" && u.Source == "کاربر سامانه");
+            Assert.Contains(list, u => u.ChatId == "chat_req_2" && u.Source == "متقاضی کارپوشه");
+            Assert.Contains(list, u => u.ChatId == "chat_bot_3" && u.Source == "کاربر ربات");
+        }
+
+        [Fact]
+        public async Task SendMessageToSelectedUsersAsync_SendsToAllSpecifiedTargets()
+        {
+            var targets = new List<string> { "chat_t1", "chat_t2", "chat_t3" };
+
+            var sentCount = await _service.SendMessageToSelectedUsersAsync("پیام تستی به افراد انتخاب‌شده", targets);
+
+            Assert.Equal(3, sentCount);
+            Assert.True(_httpHandler.Requests.Count >= 3);
         }
     }
 }

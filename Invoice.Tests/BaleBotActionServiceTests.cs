@@ -322,5 +322,79 @@ namespace Invoice.Tests
             Assert.True(status.Success);
             Assert.Contains("فعال است", status.Message);
         }
+
+        [Fact]
+        public async Task HandleActionAsync_KarpooshehApprove_NotifiesUserInBale()
+        {
+            var userBotMock = new Mock<IBaleUserBotService>();
+            var service = new BaleBotActionService(_context, _activityLoggerMock.Object, _loggerMock.Object, userBotMock.Object);
+
+            var req = new KarpooshehRequest
+            {
+                Id = 25,
+                Name = "شرکت پایا صنعت",
+                NationalId = "10101010109",
+                Phone = "09121112233",
+                JobTitle = "صنعتگر",
+                BaleChatId = "chat_user_99"
+            };
+            _context.KarpooshehRequests.Add(req);
+            await _context.SaveChangesAsync();
+
+            var result = await service.HandleActionAsync("karpoosheh", "receive", 25, "BaleAdmin");
+
+            Assert.True(result.Success);
+            userBotMock.Verify(b => b.SendUserMessageAsync(
+                "chat_user_99",
+                It.Is<string>(s => s.Contains("توسط کارشناس سامانه دریافت گردید")),
+                null,
+                "HTML",
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task HandleActionAsync_KarpooshehReject_NotifiesUserInBale()
+        {
+            var userBotMock = new Mock<IBaleUserBotService>();
+            var service = new BaleBotActionService(_context, _activityLoggerMock.Object, _loggerMock.Object, userBotMock.Object);
+
+            var req = new KarpooshehRequest
+            {
+                Id = 26,
+                Name = "شرکت نوین مهر",
+                NationalId = "10101010110",
+                Phone = "09121112244",
+                JobTitle = "تولیدکننده",
+                BaleChatId = "chat_user_100"
+            };
+            _context.KarpooshehRequests.Add(req);
+            await _context.SaveChangesAsync();
+
+            var result = await service.HandleActionAsync("karpoosheh", "reject", 26, "BaleAdmin");
+
+            Assert.True(result.Success);
+            userBotMock.Verify(b => b.SendUserMessageAsync(
+                "chat_user_100",
+                It.Is<string>(s => s.Contains("توسط کارشناس رد شد")),
+                null,
+                "HTML",
+                It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Fact]
+        public async Task ProcessTextCommandAsync_Broadcast_CallsBroadcastMessage()
+        {
+            var userBotMock = new Mock<IBaleUserBotService>();
+            userBotMock.Setup(b => b.BroadcastMessageAsync(It.IsAny<string>(), null, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(5);
+
+            var service = new BaleBotActionService(_context, _activityLoggerMock.Object, _loggerMock.Object, userBotMock.Object);
+
+            var result = await service.ProcessTextCommandAsync("ارسال همگانی سلام به همه کاربران", "12345");
+
+            Assert.True(result.Success);
+            Assert.Contains("5 کاربر", result.Message);
+            userBotMock.Verify(b => b.BroadcastMessageAsync("سلام به همه کاربران", null, It.IsAny<CancellationToken>()), Times.Once);
+        }
     }
 }

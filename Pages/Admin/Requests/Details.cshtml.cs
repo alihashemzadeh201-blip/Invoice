@@ -42,6 +42,10 @@ namespace Invoice.Pages_Admin_KarpooshehRequest
         public string MemoryId { get; set; } = string.Empty;
 
         [BindProperty]
+        [Display(Name = "نام کاربری سامانه")]
+        public string? SelectedUsername { get; set; }
+
+        [BindProperty]
         [Display(Name = "رمز عبور اولیه ورود به سامانه")]
         public string? UserPassword { get; set; }
 
@@ -89,10 +93,12 @@ namespace Invoice.Pages_Admin_KarpooshehRequest
                 return Page();
             }
 
-            // تعیین نام کاربری سامانه (شماره همراه یا کد ملی)
-            var username = !string.IsNullOrWhiteSpace(request.Phone) && request.Phone.Trim().Length == 11
-                ? request.Phone.Trim()
-                : request.NationalId.Trim();
+            // تعیین نام کاربری سامانه (بر اساس انتخاب کاربر یا ادمین: شماره همراه یا کد ملی)
+            var username = !string.IsNullOrWhiteSpace(SelectedUsername)
+                ? SelectedUsername.Trim()
+                : (request.Description?.Contains(request.NationalId) == true
+                    ? request.NationalId.Trim()
+                    : (!string.IsNullOrWhiteSpace(request.Phone) ? request.Phone.Trim() : request.NationalId.Trim()));
 
             var rawPassword = !string.IsNullOrWhiteSpace(UserPassword)
                 ? UserPassword.Trim()

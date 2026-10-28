@@ -135,11 +135,19 @@ namespace Invoice.Code
                 var client = _httpClientFactory.CreateClient("BaleClient");
                 var url = $"https://tapi.bale.ai/bot{effectiveToken}/sendMessage";
 
+                var effectiveText = text;
+                var effectiveParseMode = parseMode;
+                if (string.Equals(parseMode, "HTML", StringComparison.OrdinalIgnoreCase) || (text.Contains('<') && text.Contains('>')))
+                {
+                    effectiveText = BaleUserBotService.ConvertHtmlToMarkdown(text);
+                    effectiveParseMode = "Markdown";
+                }
+
                 var payload = new Dictionary<string, object>
                 {
                     ["chat_id"] = effectiveChatId,
-                    ["text"] = text,
-                    ["parse_mode"] = parseMode
+                    ["text"] = effectiveText,
+                    ["parse_mode"] = effectiveParseMode
                 };
                 if (replyMarkup != null)
                 {
@@ -229,12 +237,20 @@ namespace Invoice.Code
                 var client = _httpClientFactory.CreateClient("BaleClient");
                 var url = $"https://tapi.bale.ai/bot{effectiveToken}/editMessageText";
 
+                var effectiveText = text;
+                var effectiveParseMode = parseMode;
+                if (string.Equals(parseMode, "HTML", StringComparison.OrdinalIgnoreCase) || (text.Contains('<') && text.Contains('>')))
+                {
+                    effectiveText = BaleUserBotService.ConvertHtmlToMarkdown(text);
+                    effectiveParseMode = "Markdown";
+                }
+
                 var payload = new Dictionary<string, object>
                 {
                     ["chat_id"] = chatId.Trim(),
                     ["message_id"] = messageId,
-                    ["text"] = text,
-                    ["parse_mode"] = parseMode
+                    ["text"] = effectiveText,
+                    ["parse_mode"] = effectiveParseMode
                 };
                 if (replyMarkup != null)
                 {
@@ -311,6 +327,10 @@ namespace Invoice.Code
                     : "/Admin/Requests/Index";
                 var targetUrl = BuildAbsoluteUrl(baseUrl, targetPath);
 
+                var payStatus = request.IsPaid
+                    ? $"✅ پرداخت شده ({(request.PaymentAmount?.ToString("N0") ?? "-")} ریال)"
+                    : "⏳ در انتظار پرداخت";
+
                 var message = $@"📋 <b>درخواست جدید شناسه یکتا (کارپوشه)</b>
 🏷️ {HtmlSafe(settings.CustomTitle)}
 
@@ -319,6 +339,7 @@ namespace Invoice.Code
 🆔 <b>کد / شناسه ملی:</b> <code>{HtmlSafe(request.NationalId)}</code>
 📞 <b>شماره تماس:</b> <code>{HtmlSafe(request.Phone)}</code>
 💼 <b>عنوان شغل/شرکت:</b> {HtmlSafe(request.JobTitle)}
+💳 <b>وضعیت پرداخت:</b> {payStatus}
 📧 <b>ایمیل:</b> {HtmlSafe(request.Email)}
 🔑 <b>رمز عبور مودیان:</b> {(string.IsNullOrWhiteSpace(request.TaxPassword) ? "ثبت نشده" : "ثبت شده")}
 📝 <b>توضیحات:</b> {HtmlSafe(request.Description)}
@@ -333,7 +354,7 @@ namespace Invoice.Code
                     {
                         new List<object>
                         {
-                            new { text = "✅ تایید / ثبت دریافت", callback_data = $"karpoosheh:approve:{request.Id}" },
+                            new { text = "📥 ثبت دریافت", callback_data = $"karpoosheh:receive:{request.Id}" },
                             new { text = "❌ رد درخواست", callback_data = $"karpoosheh:reject:{request.Id}" }
                         }
                     };

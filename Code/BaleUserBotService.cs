@@ -15,6 +15,17 @@ using Microsoft.Extensions.Logging;
 
 namespace Invoice.Code
 {
+    public class BaleUserInfo
+    {
+        public string ChatId { get; set; } = string.Empty;
+        public string? BaleUsername { get; set; }
+        public string DisplayName { get; set; } = string.Empty;
+        public string? PhoneNumber { get; set; }
+        public string? NationalId { get; set; }
+        public string Source { get; set; } = string.Empty;
+        public DateTime? LastActivityDate { get; set; }
+    }
+
     public interface IBaleUserBotService
     {
         Task ProcessUpdateAsync(JsonElement update, CancellationToken ct = default);
@@ -22,6 +33,10 @@ namespace Invoice.Code
         Task<bool> NotifyUserTaxIdReadyAsync(string chatId, string name, string memoryId, string username, string? loginPassword = null, CancellationToken ct = default);
         Task<bool> SendRegistrationInvoiceAsync(string chatId, int requestId, int amount, string title, string description, CancellationToken ct = default);
         Task<bool> AnswerPreCheckoutQueryAsync(string preCheckoutQueryId, bool ok, string? errorMessage = null, CancellationToken ct = default);
+        Task<int> BroadcastMessageAsync(string text, string? specificChatId = null, CancellationToken ct = default);
+        Task<List<string>> GetAllUserChatIdsAsync(CancellationToken ct = default);
+        Task<List<BaleUserInfo>> GetBaleUsersListAsync(CancellationToken ct = default);
+        Task<int> SendMessageToSelectedUsersAsync(string text, IEnumerable<string> targetChatIds, CancellationToken ct = default);
     }
 
     public class BaleUserBotService : IBaleUserBotService
@@ -173,12 +188,23 @@ namespace Invoice.Code
             if (string.Equals(text, "/start", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(text, "منوی اصلی", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(text, "/menu", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(text, "انصراف", StringComparison.OrdinalIgnoreCase))
+                string.Equals(text, "انصراف", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(text, "❌ انصراف", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(text, "/cancel", StringComparison.OrdinalIgnoreCase))
             {
                 userState.CurrentStep = "None";
                 userState.StateDataJson = null;
                 await _context.SaveChangesAsync(ct);
                 await ShowMainMenuAsync(chatId, ct);
+                return;
+            }
+
+            // دکمه بازگشت به مرحله قبل
+            if (string.Equals(text, "🔙 بازگشت", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(text, "بازگشت", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(text, "/back", StringComparison.OrdinalIgnoreCase))
+            {
+                await HandleGoBackAsync(chatId, userState, ct);
                 return;
             }
 
@@ -197,7 +223,7 @@ namespace Invoice.Code
 
                 await SendUserMessageAsync(chatId,
                     "🔐 <b>اتصال به حساب کاربری سامانه</b>\n\n" +
-                    "لطفاً شماره تلفن همراه ثبت‌شده در سامانه (نام کاربری ۱۱ رقمی مانند <code>09121234567</code>) را وارد نمایید:",
+                    "لطفاً نام کاربری خود در سامانه (شماره تلفن همراه یا کد ملی / شناسه ملی) را وارد نمایید:",
                     GetCancelReplyKeyboard(),
                     ct: ct);
                 return;
@@ -487,11 +513,143 @@ namespace Invoice.Code
                 inline_keyboard = new[]
                 {
                     new[] { new { text = "👤 شخص حقیقی", callback_data = "reg_pt:Real" } },
-                    new[] { new { text = "🏢 شخص حقوقی (شرکت / موسسه)", callback_data = "reg_pt:Legal" } }
+                    new[] { new { text = "🏢 شخص حقوقی (شرکت / موسسه)", callback_data = "reg_pt:Legal" } },
+                    new[] { new { text = "❌ انصراف و بازگشت به منوی اصلی", callback_data = "reg_cancel" } }
                 }
             };
 
             await SendUserMessageAsync(chatId, text, markup, ct: ct);
+        }
+
+        private async Task HandleGoBackAsync(string chatId, BaleUserState userState, CancellationToken ct)
+        {
+            var step = userState.CurrentStep ?? "None";
+            var data = string.IsNullOrWhiteSpace(userState.StateDataJson)
+                ? new Dictionary<string, string>()
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
+
+            switch (step)
+            {
+                case "Login_Password":
+                    userState.CurrentStep = "Login_Username";
+                    await _context.SaveChangesAsync(ct);
+                    await SendUserMessageAsync(chatId,
+                        "🔐 <b>اتصال به حساب کاربری سامانه</b>\n\n" +
+                        "لطفاً نام کاربری خود در سامانه (شماره تلفن همراه یا کد ملی / شناسه ملی) را وارد نمایید:",
+                        GetCancelReplyKeyboard(),
+                        ct: ct);
+                    return;
+
+                case "Login_Username":
+                case "Reg_PersonType":
+                    userState.CurrentStep = "None";
+                    userState.StateDataJson = null;
+                    await _context.SaveChangesAsync(ct);
+                    await ShowMainMenuAsync(chatId, ct);
+                    return;
+
+                case "Reg_Name":
+                    userState.CurrentStep = "Reg_PersonType";
+                    await _context.SaveChangesAsync(ct);
+                    var textPt = "📝 <b>مرحله ۱ از ۷: نوع شخص متقاضی</b>\n\n" +
+                                 "لطفاً نوع شخصیت خود را جهت صدور شناسه یکتای مالیاتی انتخاب نمایید:";
+                    var markupPt = new
+                    {
+                        inline_keyboard = new[]
+                        {
+                            new[] { new { text = "👤 شخص حقیقی", callback_data = "reg_pt:Real" } },
+                            new[] { new { text = "🏢 شخص حقوقی (شرکت / موسسه)", callback_data = "reg_pt:Legal" } },
+                            new[] { new { text = "❌ انصراف و بازگشت به منوی اصلی", callback_data = "reg_cancel" } }
+                        }
+                    };
+                    await SendUserMessageAsync(chatId, textPt, markupPt, ct: ct);
+                    return;
+
+                case "Reg_LatinName":
+                    userState.CurrentStep = "Reg_Name";
+                    await _context.SaveChangesAsync(ct);
+                    var isLegal = data.TryGetValue("PersonType", out var pt) && pt == "Legal";
+                    var promptName = isLegal
+                        ? "📝 <b>مرحله ۲ از ۷: نام کامل شرکت یا موسسه</b>\n\nلطفاً نام رسمی ثبت‌شده شرکت را وارد نمایید:"
+                        : "📝 <b>مرحله ۲ از ۷: نام و نام خانوادگی</b>\n\nلطفاً نام و نام خانوادگی خود را مطابق کارت ملی وارد نمایید:";
+                    await SendUserMessageAsync(chatId, promptName, GetCancelReplyKeyboard(), ct: ct);
+                    return;
+
+                case "Reg_NationalId":
+                    userState.CurrentStep = "Reg_LatinName";
+                    await _context.SaveChangesAsync(ct);
+                    await SendUserMessageAsync(chatId,
+                        "📝 <b>مرحله ۳ از ۷: نام عمومی (انگلیسی)</b>\n\n" +
+                        "لطفاً نام خود یا شرکت را به انگلیسی، با حروف الفبا و بدون فاصله وارد نمایید (جهت درج در گواهی امضای دیجیتال CSR):\n" +
+                        "<i>مثال: Alireza یا Fanavaran</i>",
+                        GetCancelReplyKeyboard(),
+                        ct: ct);
+                    return;
+
+                case "Reg_Phone":
+                    userState.CurrentStep = "Reg_NationalId";
+                    await _context.SaveChangesAsync(ct);
+                    var isLegalNat = data.TryGetValue("PersonType", out var ptNat) && ptNat == "Legal";
+                    var idTitle = isLegalNat ? "شناسه ملی شرکت (۱۱ رقم)" : "شماره ملی (۱۰ رقم)";
+                    await SendUserMessageAsync(chatId, $"📝 <b>مرحله ۴ از ۷: {idTitle}</b>\n\nلطفاً {idTitle} را بدون خط تیره یا فاصله وارد فرمایید:", GetCancelReplyKeyboard(), ct: ct);
+                    return;
+
+                case "Reg_JobTitle":
+                    userState.CurrentStep = "Reg_Phone";
+                    await _context.SaveChangesAsync(ct);
+                    await SendUserMessageAsync(chatId,
+                        "📝 <b>مرحله ۵ از ۷: شماره همراه</b>\n\n" +
+                        "لطفاً شماره تلفن همراه فعال خود را وارد نمایید (مانند <code>09121234567</code>) یا از طریق دکمه زیر شماره خود را به اشتراک بگذارید:",
+                        GetPhoneReplyKeyboard(),
+                        ct: ct);
+                    return;
+
+                case "Reg_UsernameChoice":
+                    userState.CurrentStep = "Reg_JobTitle";
+                    await _context.SaveChangesAsync(ct);
+                    await SendUserMessageAsync(chatId,
+                        "📝 <b>مرحله ۶ از ۷: عنوان شغل یا فعالیت</b>\n\n" +
+                        "لطفاً صنف، شغل یا عنوان فعالیت اقتصادی خود را وارد فرمایید:\n<i>مثال: فروشگاه لوازم یدکی، پیمانکاری ساختمان، خدمات فناوری اطلاعات</i>",
+                        GetCancelReplyKeyboard(),
+                        ct: ct);
+                    return;
+
+                case "Reg_Confirm":
+                    userState.CurrentStep = "Reg_UsernameChoice";
+                    await _context.SaveChangesAsync(ct);
+                    await PromptUsernameChoiceAsync(chatId, data, ct);
+                    return;
+
+                default:
+                    userState.CurrentStep = "None";
+                    userState.StateDataJson = null;
+                    await _context.SaveChangesAsync(ct);
+                    await ShowMainMenuAsync(chatId, ct);
+                    return;
+            }
+        }
+
+        private async Task PromptUsernameChoiceAsync(string chatId, Dictionary<string, string> data, CancellationToken ct)
+        {
+            var natId = data.TryGetValue("NationalId", out var nid) ? nid : "";
+            var phone = data.TryGetValue("Phone", out var ph) ? ph : "";
+
+            var prompt = "📝 <b>مرحله ۷ از ۷: انتخاب نام کاربری سامانه</b>\n\n" +
+                         "لطفاً مشخص فرمایید که تمایل دارید نام کاربری شما جهت ورود به سامانه کدام مورد باشد:\n\n" +
+                         $"1️⃣ شماره تلفن همراه: <code>{phone}</code>\n" +
+                         $"2️⃣ کد ملی / شناسه ملی: <code>{natId}</code>\n\n" +
+                         "جهت انتخاب، یکی از گزینه‌های زیر را لمس نمایید یا عدد ۱ یا ۲ را ارسال فرمایید:";
+
+            var markup = new
+            {
+                inline_keyboard = new[]
+                {
+                    new[] { new { text = $"📱 شماره همراه ({phone})", callback_data = "reg_un:phone" } },
+                    new[] { new { text = $"🆔 کد/شناسه ملی ({natId})", callback_data = "reg_un:natid" } }
+                }
+            };
+
+            await SendUserMessageAsync(chatId, prompt, markup, ct: ct);
         }
 
         private async Task ProcessStepInputAsync(string chatId, BaleUserState userState, string? text, string? contactPhone, string? fromUsername, CancellationToken ct)
@@ -504,17 +662,18 @@ namespace Invoice.Code
             switch (step)
             {
                 case "Login_Username":
-                    if (string.IsNullOrWhiteSpace(text) || !Regex.IsMatch(text, @"^09\d{9}$"))
+                    var cleanLoginUser = (text ?? "").Trim();
+                    if (string.IsNullOrWhiteSpace(cleanLoginUser) || (!Regex.IsMatch(cleanLoginUser, @"^09\d{9}$") && !Regex.IsMatch(cleanLoginUser, @"^\d{10,11}$")))
                     {
-                        await SendUserMessageAsync(chatId, "❌ لطفاً یک شماره همراه معتبر ۱۱ رقمی (مانند <code>09121234567</code>) وارد نمایید:", ct: ct);
+                        await SendUserMessageAsync(chatId, "❌ لطفاً یک نام کاربری معتبر (شماره همراه ۱۱ رقمی مانند <code>09121234567</code> یا کد ملی / شناسه ملی ۱۰-۱۱ رقمی) وارد نمایید:", GetCancelReplyKeyboard(), ct: ct);
                         return;
                     }
-                    data["LoginUser"] = text.Trim();
+                    data["LoginUser"] = cleanLoginUser;
                     userState.CurrentStep = "Login_Password";
                     userState.StateDataJson = JsonSerializer.Serialize(data);
                     await _context.SaveChangesAsync(ct);
 
-                    await SendUserMessageAsync(chatId, "🔑 لطفاً رمز عبور حساب کاربری خود در سامانه را وارد نمایید:", ct: ct);
+                    await SendUserMessageAsync(chatId, "🔑 لطفاً رمز عبور حساب کاربری خود در سامانه را وارد نمایید:", GetCancelReplyKeyboard(), ct: ct);
                     return;
 
                 case "Login_Password":
@@ -530,7 +689,7 @@ namespace Invoice.Code
                     var dbUser = await _context.Users.Include(u => u.Profile).FirstOrDefaultAsync(u => u.Username == targetUser, ct);
                     if (dbUser == null || PasswordHashManager.Verify(dbUser.Password, text.Trim()) == PasswordCheckResult.Failed)
                     {
-                        await SendUserMessageAsync(chatId, "❌ نام کاربری یا رمز عبور اشتباه است. لطفاً مجدداً تلاش نمایید:", ct: ct);
+                        await SendUserMessageAsync(chatId, "❌ نام کاربری یا رمز عبور اشتباه است. لطفاً مجدداً تلاش نمایید:", GetCancelReplyKeyboard(), ct: ct);
                         userState.CurrentStep = "None";
                         await _context.SaveChangesAsync(ct);
                         await ShowMainMenuAsync(chatId, ct);
@@ -552,7 +711,7 @@ namespace Invoice.Code
                 case "Reg_Name":
                     if (string.IsNullOrWhiteSpace(text) || text.Trim().Length < 3)
                     {
-                        await SendUserMessageAsync(chatId, "❌ لطفاً نام و نام خانوادگی خود (یا نام کامل شرکت) را به درستی وارد نمایید:", ct: ct);
+                        await SendUserMessageAsync(chatId, "❌ لطفاً نام و نام خانوادگی خود (یا نام کامل شرکت) را به درستی وارد نمایید:", GetCancelReplyKeyboard(), ct: ct);
                         return;
                     }
                     data["Name"] = text.Trim();
@@ -564,6 +723,7 @@ namespace Invoice.Code
                         "📝 <b>مرحله ۳ از ۷: نام عمومی (انگلیسی)</b>\n\n" +
                         "لطفاً نام خود یا شرکت را به انگلیسی، با حروف الفبا و بدون فاصله وارد نمایید (جهت درج در گواهی امضای دیجیتال CSR):\n" +
                         "<i>مثال: Alireza یا Fanavaran</i>",
+                        GetCancelReplyKeyboard(),
                         ct: ct);
                     return;
 
@@ -571,7 +731,7 @@ namespace Invoice.Code
                     var cleanLatin = (text ?? "").Trim();
                     if (!Regex.IsMatch(cleanLatin, @"^[a-zA-Z]+$"))
                     {
-                        await SendUserMessageAsync(chatId, "❌ نام عمومی باید صرفاً شامل حروف انگلیسی و بدون فاصله یا اعداد باشد. لطفاً مجدداً وارد فرمایید:", ct: ct);
+                        await SendUserMessageAsync(chatId, "❌ نام عمومی باید صرفاً شامل حروف انگلیسی و بدون فاصله یا اعداد باشد. لطفاً مجدداً وارد فرمایید:", GetCancelReplyKeyboard(), ct: ct);
                         return;
                     }
                     data["LatinName"] = cleanLatin;
@@ -581,14 +741,14 @@ namespace Invoice.Code
 
                     var isLegal = data.TryGetValue("PersonType", out var pt) && pt == "Legal";
                     var idTitle = isLegal ? "شناسه ملی شرکت (۱۱ رقم)" : "شماره ملی (۱۰ رقم)";
-                    await SendUserMessageAsync(chatId, $"📝 <b>مرحله ۴ از ۷: {idTitle}</b>\n\nلطفاً {idTitle} را بدون خط تیره یا فاصله وارد فرمایید:", ct: ct);
+                    await SendUserMessageAsync(chatId, $"📝 <b>مرحله ۴ از ۷: {idTitle}</b>\n\nلطفاً {idTitle} را بدون خط تیره یا فاصله وارد فرمایید:", GetCancelReplyKeyboard(), ct: ct);
                     return;
 
                 case "Reg_NationalId":
                     var natId = (text ?? "").Trim();
                     if (!Regex.IsMatch(natId, @"^\d{10,11}$"))
                     {
-                        await SendUserMessageAsync(chatId, "❌ کد ملی / شناسه ملی باید عددی بین ۱۰ تا ۱۱ رقم باشد. لطفاً مجدداً وارد نمایید:", ct: ct);
+                        await SendUserMessageAsync(chatId, "❌ کد ملی / شناسه ملی باید عددی بین ۱۰ تا ۱۱ رقم باشد. لطفاً مجدداً وارد نمایید:", GetCancelReplyKeyboard(), ct: ct);
                         return;
                     }
                     var preReq = await _context.KarpooshehRequests.FirstOrDefaultAsync(r => r.NationalId == natId && r.FinishDate == null, ct);
@@ -614,10 +774,15 @@ namespace Invoice.Code
 
                 case "Reg_Phone":
                     var phoneVal = !string.IsNullOrWhiteSpace(contactPhone) ? contactPhone : text;
-                    phoneVal = (phoneVal ?? "").Trim().Replace("+98", "0");
+                    phoneVal = (phoneVal ?? "").Trim();
+                    // نرمال‌سازی فرمت‌های مختلف شماره تلفن
+                    if (phoneVal.StartsWith("+98"))
+                        phoneVal = "0" + phoneVal.Substring(3);
+                    else if (phoneVal.StartsWith("98") && phoneVal.Length == 12)
+                        phoneVal = "0" + phoneVal.Substring(2);
                     if (!Regex.IsMatch(phoneVal, @"^09\d{9}$"))
                     {
-                        await SendUserMessageAsync(chatId, "❌ شماره تماس نامعتبر است. لطفاً شماره موبایل ۱۱ رقمی را با پیش‌شماره 09 وارد فرمایید:", ct: ct);
+                        await SendUserMessageAsync(chatId, "❌ شماره تماس نامعتبر است. لطفاً شماره موبایل ۱۱ رقمی را با پیش‌شماره 09 وارد فرمایید:", GetPhoneReplyKeyboard(), ct: ct);
                         return;
                     }
                     data["Phone"] = phoneVal;
@@ -635,34 +800,49 @@ namespace Invoice.Code
                 case "Reg_JobTitle":
                     if (string.IsNullOrWhiteSpace(text) || text.Trim().Length < 2)
                     {
-                        await SendUserMessageAsync(chatId, "❌ لطفاً عنوان شغل خود را وارد نمایید:", ct: ct);
+                        await SendUserMessageAsync(chatId, "❌ لطفاً عنوان شغل خود را وارد نمایید:", GetCancelReplyKeyboard(), ct: ct);
                         return;
                     }
                     data["JobTitle"] = text.Trim();
-                    userState.CurrentStep = "Reg_PostalCode";
+                    userState.CurrentStep = "Reg_UsernameChoice";
                     userState.StateDataJson = JsonSerializer.Serialize(data);
                     await _context.SaveChangesAsync(ct);
 
-                    await SendUserMessageAsync(chatId,
-                        "📝 <b>مرحله ۷ از ۷: کد پستی</b>\n\n" +
-                        "لطفاً کد پستی ۱۰ رقمی محل کسب یا اقامتگاه قانونی خود را وارد فرمایید:",
-                        GetCancelReplyKeyboard(),
-                        ct: ct);
+                    await PromptUsernameChoiceAsync(chatId, data, ct);
                     return;
 
-                case "Reg_PostalCode":
-                    var postCode = (text ?? "").Trim();
-                    if (!Regex.IsMatch(postCode, @"^\d{10}$"))
+                case "Reg_UsernameChoice":
+                    var tUn = (text ?? "").Trim();
+                    var phOpt = data.TryGetValue("Phone", out var pVal) ? pVal : "";
+                    var idOpt = data.TryGetValue("NationalId", out var iVal) ? iVal : "";
+                    if (tUn == "1" || tUn.Contains("همراه") || tUn.Contains("تلفن") || tUn.Contains("شماره") || tUn.Contains("موبایل"))
                     {
-                        await SendUserMessageAsync(chatId, "❌ کد پستی باید دقیقاً یک عدد ۱۰ رقمی باشد. لطفاً مجدداً وارد فرمایید:", ct: ct);
+                        data["PreferredUsername"] = phOpt;
+                        data["UsernameType"] = "Phone";
+                    }
+                    else if (tUn == "2" || tUn.Contains("کد") || tUn.Contains("شناسه") || tUn.Contains("ملی"))
+                    {
+                        data["PreferredUsername"] = idOpt;
+                        data["UsernameType"] = "NationalId";
+                    }
+                    else
+                    {
+                        await SendUserMessageAsync(chatId, "❌ لطفاً یکی از دو گزینه بالا را لمس نمایید یا عدد ۱ (شماره همراه) یا ۲ (کد ملی) را ارسال فرمایید:", GetCancelReplyKeyboard(), ct: ct);
                         return;
                     }
-                    data["PostalCode"] = postCode;
                     userState.CurrentStep = "Reg_Confirm";
                     userState.StateDataJson = JsonSerializer.Serialize(data);
                     await _context.SaveChangesAsync(ct);
 
                     await ShowRegistrationSummaryAsync(chatId, data, ct);
+                    return;
+
+                case "Reg_PostalCode":
+                    // در صورت وجود استیت‌های قدیمی در حال اجرا، مستقیماً به انتخاب نام کاربری هدایت می‌شود
+                    userState.CurrentStep = "Reg_UsernameChoice";
+                    userState.StateDataJson = JsonSerializer.Serialize(data);
+                    await _context.SaveChangesAsync(ct);
+                    await PromptUsernameChoiceAsync(chatId, data, ct);
                     return;
 
                 default:
@@ -683,7 +863,9 @@ namespace Invoice.Code
             var natId = data.TryGetValue("NationalId", out var id) ? id : "-";
             var phone = data.TryGetValue("Phone", out var p) ? p : "-";
             var job = data.TryGetValue("JobTitle", out var j) ? j : "-";
-            var post = data.TryGetValue("PostalCode", out var pc) ? pc : "-";
+            var prefUsername = data.TryGetValue("PreferredUsername", out var pu) && !string.IsNullOrWhiteSpace(pu)
+                ? pu
+                : phone;
 
             var summaryText = $"🔍 <b>پیش‌نمایش و تایید اطلاعات ثبت‌نام</b>\n\n" +
                               $"• نوع شخص: <b>{ptTitle}</b>\n" +
@@ -692,7 +874,7 @@ namespace Invoice.Code
                               $"• کدملی / شناسه ملی: <code>{natId}</code>\n" +
                               $"• شماره همراه: <code>{phone}</code>\n" +
                               $"• عنوان شغل: <b>{HtmlSafe(job)}</b>\n" +
-                              $"• کد پستی: <code>{post}</code>\n\n" +
+                              $"• نام کاربری انتخابی سامانه: <code>{prefUsername}</code>\n\n" +
                               $"💰 <b>هزینه صدور شناسه یکتا و ایجاد کارپوشه:</b> {feeRials:N0} ریال ({feeTomans} تومان)\n\n" +
                               $"در صورت تایید، لطفاً دکمه «تایید و پرداخت وجه» را لمس نمایید تا فاکتور پرداخت پیام‌رسان بله برای شما صادر گردد:";
 
@@ -701,7 +883,11 @@ namespace Invoice.Code
                 inline_keyboard = new[]
                 {
                     new[] { new { text = "💳 تایید و پرداخت وجه", callback_data = "reg_pay_now" } },
-                    new[] { new { text = "❌ انصراف و شروع مجدد", callback_data = "reg_cancel" } }
+                    new[]
+                    {
+                        new { text = "🔙 ویرایش و بازگشت", callback_data = "reg_back" },
+                        new { text = "❌ انصراف و شروع مجدد", callback_data = "reg_cancel" }
+                    }
                 }
             };
 
@@ -752,6 +938,43 @@ namespace Invoice.Code
                 return;
             }
 
+            // انتخاب نام کاربری
+            if (data.StartsWith("reg_un:"))
+            {
+                var choice = data.Substring("reg_un:".Length);
+                var stateDict = string.IsNullOrWhiteSpace(userState.StateDataJson)
+                    ? new Dictionary<string, string>()
+                    : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
+
+                var ph = stateDict.TryGetValue("Phone", out var pVal) ? pVal : "";
+                var nid = stateDict.TryGetValue("NationalId", out var nVal) ? nVal : "";
+
+                if (choice == "phone")
+                {
+                    stateDict["PreferredUsername"] = ph;
+                    stateDict["UsernameType"] = "Phone";
+                }
+                else
+                {
+                    stateDict["PreferredUsername"] = nid;
+                    stateDict["UsernameType"] = "NationalId";
+                }
+
+                userState.CurrentStep = "Reg_Confirm";
+                userState.StateDataJson = JsonSerializer.Serialize(stateDict);
+                await _context.SaveChangesAsync(ct);
+
+                await ShowRegistrationSummaryAsync(chatId, stateDict, ct);
+                return;
+            }
+
+            // بازگشت به مرحله قبل از پیش‌نمایش
+            if (data == "reg_back")
+            {
+                await HandleGoBackAsync(chatId, userState, ct);
+                return;
+            }
+
             // انصراف از ثبت‌نام
             if (data == "reg_cancel")
             {
@@ -788,6 +1011,28 @@ namespace Invoice.Code
                         return;
                     }
                 }
+            }
+
+            // انصراف از درخواست ثبت‌نام قبلی و شروع مجدد
+            if (data.StartsWith("cancel_reg:"))
+            {
+                var reqIdStr = data.Substring("cancel_reg:".Length);
+                if (int.TryParse(reqIdStr, out var cancelReqId))
+                {
+                    var reqToCancel = await _context.KarpooshehRequests.FindAsync(cancelReqId);
+                    if (reqToCancel != null && !reqToCancel.IsPaid)
+                    {
+                        reqToCancel.CancelDate = DateTime.Now;
+                        reqToCancel.FinishDate = DateTime.Now;
+                        await _context.SaveChangesAsync(ct);
+                    }
+                }
+                userState.CurrentStep = "None";
+                userState.StateDataJson = null;
+                await _context.SaveChangesAsync(ct);
+                await SendUserMessageAsync(chatId, "✅ درخواست قبلی لغو شد. در حال شروع ثبت‌نام جدید...", ct: ct);
+                await StartRegistrationFlowAsync(chatId, userState, ct);
+                return;
             }
 
             // شارژ کیف پول
@@ -841,6 +1086,10 @@ namespace Invoice.Code
             var settings = await _settingsService.GetSettingsAsync();
             var fee = settings.RegistrationFee > 0 ? settings.RegistrationFee : 5000000;
 
+            var prefUn = data.TryGetValue("PreferredUsername", out var pu) && !string.IsNullOrWhiteSpace(pu)
+                ? pu
+                : (data.TryGetValue("Phone", out var pDef) ? pDef : natId);
+
             var req = new KarpooshehRequest
             {
                 Name = name,
@@ -848,17 +1097,32 @@ namespace Invoice.Code
                 NationalId = natId,
                 Phone = data.TryGetValue("Phone", out var p) ? p : "",
                 JobTitle = data.TryGetValue("JobTitle", out var j) ? j : "",
-                PostalCode = data.TryGetValue("PostalCode", out var pc) ? pc : null,
+                PostalCode = null,
+                Description = $"نام کاربری انتخابی: {prefUn}",
                 PersonType = data.TryGetValue("PersonType", out var pt) && pt == "Legal" ? PersonType.حقوقی : PersonType.حقیقی,
                 RequestDate = DateTime.Now,
                 BaleChatId = chatId,
                 BaleUsername = fromUsername,
-                IsPaid = false,
+                IsPaid = fee <= 0,
                 PaymentAmount = fee
             };
 
             _context.KarpooshehRequests.Add(req);
             await _context.SaveChangesAsync(ct);
+
+            if (fee <= 0)
+            {
+                userState.CurrentStep = "None";
+                userState.StateDataJson = null;
+                await _context.SaveChangesAsync(ct);
+
+                await SendUserMessageAsync(chatId,
+                    $"✅ درخواست اخذ شناسه یکتای مالیاتی شما با کد پیگیری <b>#{req.Id}</b> با موفقیت ثبت شد و جهت بررسی در اختیار کارشناسان قرار گرفت.\nبه محض اقدام، در همین ربات به شما اطلاع‌رسانی خواهد شد.",
+                    ct: ct);
+                await ShowMainMenuAsync(chatId, ct);
+                await _adminNotificationService.SendKarpooshehRequestNotificationAsync(req, ct);
+                return;
+            }
 
             userState.CurrentStep = "Registration_AwaitingPayment";
             await _context.SaveChangesAsync(ct);
@@ -868,10 +1132,13 @@ namespace Invoice.Code
                 $"صدور شناسه یکتای حافظه مالیاتی برای {req.Name} - کدملی {req.NationalId}",
                 ct);
 
+            // ارسال اعلان ثبت درخواست به ربات ادمین
+            await _adminNotificationService.SendKarpooshehRequestNotificationAsync(req, ct);
+
             if (!sent)
             {
                 await SendUserMessageAsync(chatId,
-                    "⚠️ در حال حاضر درگاه پرداخت آنلاین پیام‌رسان بله فعال نمی‌باشد یا توکن پذیرنده تنظیم نشده است.\nدرخواست شما به صورت موقت با کد پیگیری #" + req.Id + " ثبت گردید و پس از بررسی با شما تماس گرفته خواهد شد.",
+                    "⚠️ در حال حاضر درگاه پرداخت آنلاین پیام‌رسان بله فعال نمی‌باشد یا توکن پذیرنده تنظیم نشده است.\nدرخواست شما با کد پیگیری #" + req.Id + " ثبت گردید و پس از بررسی با شما تماس گرفته خواهد شد.",
                     ct: ct);
             }
         }
@@ -1036,6 +1303,198 @@ namespace Invoice.Code
             return await SendUserMessageAsync(chatId, text, GetMainUserReplyKeyboard(true), ct: ct);
         }
 
+        public async Task<List<string>> GetAllUserChatIdsAsync(CancellationToken ct = default)
+        {
+            var userChats = await _context.Users
+                .Where(u => !string.IsNullOrWhiteSpace(u.BaleChatId))
+                .Select(u => u.BaleChatId!)
+                .ToListAsync(ct);
+
+            var reqChats = await _context.KarpooshehRequests
+                .Where(r => !string.IsNullOrWhiteSpace(r.BaleChatId))
+                .Select(r => r.BaleChatId!)
+                .ToListAsync(ct);
+
+            var stateChats = await _context.BaleUserStates
+                .Where(s => !string.IsNullOrWhiteSpace(s.ChatId))
+                .Select(s => s.ChatId!)
+                .ToListAsync(ct);
+
+            return userChats
+                .Concat(reqChats)
+                .Concat(stateChats)
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Select(c => c.Trim())
+                .Distinct()
+                .ToList();
+        }
+
+        public async Task<int> BroadcastMessageAsync(string text, string? specificChatId = null, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return 0;
+
+            var targets = !string.IsNullOrWhiteSpace(specificChatId)
+                ? new List<string> { specificChatId.Trim() }
+                : await GetAllUserChatIdsAsync(ct);
+
+            var successCount = 0;
+            foreach (var cid in targets)
+            {
+                try
+                {
+                    var sent = await SendUserMessageAsync(cid, text, ct: ct);
+                    if (sent) successCount++;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "خطا در ارسال پیام همگانی به چت {ChatId}", cid);
+                }
+            }
+
+            return successCount;
+        }
+
+        public async Task<int> SendMessageToSelectedUsersAsync(string text, IEnumerable<string> targetChatIds, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(text) || targetChatIds == null) return 0;
+
+            var distinctTargets = targetChatIds
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Select(c => c.Trim())
+                .Distinct()
+                .ToList();
+
+            var successCount = 0;
+            foreach (var cid in distinctTargets)
+            {
+                try
+                {
+                    var sent = await SendUserMessageAsync(cid, text, ct: ct);
+                    if (sent) successCount++;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "خطا در ارسال پیام به کاربر بله با شناسه چت {ChatId}", cid);
+                }
+            }
+
+            return successCount;
+        }
+
+        public async Task<List<BaleUserInfo>> GetBaleUsersListAsync(CancellationToken ct = default)
+        {
+            var dict = new Dictionary<string, BaleUserInfo>();
+
+            // 1. کاربران ثبت‌شده در سامانه با BaleChatId
+            var users = await _context.Users
+                .Include(u => u.Profile)
+                .Where(u => !string.IsNullOrWhiteSpace(u.BaleChatId))
+                .ToListAsync(ct);
+
+            foreach (var u in users)
+            {
+                var cid = u.BaleChatId!.Trim();
+                if (dict.ContainsKey(cid)) continue;
+
+                dict[cid] = new BaleUserInfo
+                {
+                    ChatId = cid,
+                    BaleUsername = u.BaleUsername,
+                    DisplayName = !string.IsNullOrWhiteSpace(u.DisplayName) ? u.DisplayName : u.Username,
+                    PhoneNumber = u.Username,
+                    NationalId = u.Profile?.TinCode,
+                    Source = "کاربر سامانه",
+                    LastActivityDate = u.RegisterDate
+                };
+            }
+
+            // 2. متقاضیان کارپوشه با BaleChatId
+            var requests = await _context.KarpooshehRequests
+                .Where(r => !string.IsNullOrWhiteSpace(r.BaleChatId))
+                .OrderByDescending(r => r.RequestDate)
+                .ToListAsync(ct);
+
+            foreach (var r in requests)
+            {
+                var cid = r.BaleChatId!.Trim();
+                if (dict.TryGetValue(cid, out var existing))
+                {
+                    if (string.IsNullOrWhiteSpace(existing.NationalId)) existing.NationalId = r.NationalId;
+                    if (string.IsNullOrWhiteSpace(existing.PhoneNumber)) existing.PhoneNumber = r.Phone;
+                    if (existing.DisplayName == "-" || string.IsNullOrWhiteSpace(existing.DisplayName)) existing.DisplayName = r.Name;
+                    if (string.IsNullOrWhiteSpace(existing.BaleUsername)) existing.BaleUsername = r.BaleUsername;
+                }
+                else
+                {
+                    dict[cid] = new BaleUserInfo
+                    {
+                        ChatId = cid,
+                        BaleUsername = r.BaleUsername,
+                        DisplayName = r.Name,
+                        PhoneNumber = r.Phone,
+                        NationalId = r.NationalId,
+                        Source = "متقاضی کارپوشه",
+                        LastActivityDate = r.RequestDate
+                    };
+                }
+            }
+
+            // 3. کاربرانی که با ربات تعامل داشته‌اند (BaleUserState)
+            var states = await _context.BaleUserStates
+                .Where(s => !string.IsNullOrWhiteSpace(s.ChatId))
+                .OrderByDescending(s => s.LastUpdated)
+                .ToListAsync(ct);
+
+            foreach (var s in states)
+            {
+                var cid = s.ChatId.Trim();
+                if (dict.TryGetValue(cid, out var existing))
+                {
+                    if (string.IsNullOrWhiteSpace(existing.BaleUsername)) existing.BaleUsername = s.Username;
+                    if (!existing.LastActivityDate.HasValue || existing.LastActivityDate < s.LastUpdated)
+                    {
+                        existing.LastActivityDate = s.LastUpdated;
+                    }
+                }
+                else
+                {
+                    string name = "-";
+                    string? phone = null;
+                    string? natId = null;
+
+                    if (!string.IsNullOrWhiteSpace(s.StateDataJson))
+                    {
+                        try
+                        {
+                            var data = JsonSerializer.Deserialize<Dictionary<string, string>>(s.StateDataJson);
+                            if (data != null)
+                            {
+                                if (data.TryGetValue("Name", out var n)) name = n;
+                                if (data.TryGetValue("Phone", out var p)) phone = p;
+                                if (data.TryGetValue("NationalId", out var nid)) natId = nid;
+                            }
+                        }
+                        catch { }
+                    }
+
+                    dict[cid] = new BaleUserInfo
+                    {
+                        ChatId = cid,
+                        BaleUsername = s.Username,
+                        DisplayName = name != "-" ? name : (!string.IsNullOrWhiteSpace(s.Username) ? $"@{s.Username}" : $"چت {cid}"),
+                        PhoneNumber = phone,
+                        NationalId = natId,
+                        Source = "کاربر ربات",
+                        LastActivityDate = s.LastUpdated
+                    };
+                }
+            }
+
+            return dict.Values
+                .OrderByDescending(u => u.LastActivityDate ?? DateTime.MinValue)
+                .ToList();
+        }
+
         public async Task<bool> SendUserMessageAsync(string chatId, string text, object? replyMarkup = null, string parseMode = "HTML", CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(chatId) || string.IsNullOrWhiteSpace(text)) return false;
@@ -1049,23 +1508,101 @@ namespace Invoice.Code
                 var client = _httpClientFactory.CreateClient("BaleClient");
                 var url = $"https://tapi.bale.ai/bot{token}/sendMessage";
 
+                var effectiveText = text;
+                var effectiveParseMode = parseMode;
+
+                // بله از تگ‌های HTML پشتیبانی نمی‌کند و آن‌ها را به صورت متنی خام نشان می‌دهد.
+                // به همین دلیل متن‌های دارای تگ یا با parseMode=HTML به مارک‌داون تبدیل می‌شوند.
+                if (string.Equals(parseMode, "HTML", StringComparison.OrdinalIgnoreCase) || (text.Contains('<') && text.Contains('>')))
+                {
+                    effectiveText = ConvertHtmlToMarkdown(text);
+                    effectiveParseMode = "Markdown";
+                }
+
                 var payload = new Dictionary<string, object>
                 {
                     ["chat_id"] = chatId,
-                    ["text"] = text,
-                    ["parse_mode"] = parseMode
+                    ["text"] = effectiveText,
+                    ["parse_mode"] = effectiveParseMode
                 };
                 if (replyMarkup != null) payload["reply_markup"] = replyMarkup;
 
                 using var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
                 var response = await client.PostAsync(url, content, ct);
-                return response.IsSuccessStatusCode;
+                if (response.IsSuccessStatusCode)
+                {
+                    return true;
+                }
+
+                // در صورت خطای بله روی قالب‌بندی مارک‌داون، پیام به صورت متن تمیز و بدون parse_mode باز ارسال می‌شود
+                if (response.StatusCode == HttpStatusCode.BadRequest)
+                {
+                    var fallbackPayload = new Dictionary<string, object>
+                    {
+                        ["chat_id"] = chatId,
+                        ["text"] = StripMarkdownAndHtml(text)
+                    };
+                    if (replyMarkup != null) fallbackPayload["reply_markup"] = replyMarkup;
+
+                    using var fallbackContent = new StringContent(JsonSerializer.Serialize(fallbackPayload), Encoding.UTF8, "application/json");
+                    var retryResponse = await client.PostAsync(url, fallbackContent, ct);
+                    if (retryResponse.IsSuccessStatusCode) return true;
+                }
+
+                var err = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("خطا در ارسال پیام به کاربر بله (وضعیت: {Status}، خطا: {Error})", response.StatusCode, err);
+                return false;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "خطا در ارسال پیام به کاربر بله (چت: {ChatId})", chatId);
                 return false;
             }
+        }
+
+        public static string ConvertHtmlToMarkdown(string html)
+        {
+            if (string.IsNullOrEmpty(html)) return string.Empty;
+
+            var text = html;
+
+            // تبدیل تگ‌های بولد با پشتیبانی از فاصله‌های درون تگ
+            text = Regex.Replace(text, @"<\s*(b|strong)\s*>\s*(.*?)\s*<\s*/\s*(b|strong)\s*>", "*$2*", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            text = Regex.Replace(text, @"<\s*/?\s*(b|strong)\s*>", "*", RegexOptions.IgnoreCase);
+
+            // تبدیل تگ‌های ایتالیک با پشتیبانی از فاصله‌های درون تگ
+            text = Regex.Replace(text, @"<\s*(i|em)\s*>\s*(.*?)\s*<\s*/\s*(i|em)\s*>", "_$2_", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            text = Regex.Replace(text, @"<\s*/?\s*(i|em)\s*>", "_", RegexOptions.IgnoreCase);
+
+            // تبدیل تگ‌های کد درون‌خطی
+            text = Regex.Replace(text, @"<\s*code\s*>\s*(.*?)\s*<\s*/\s*code\s*>", "`$2`", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            text = Regex.Replace(text, @"<\s*/?\s*code\s*>", "`", RegexOptions.IgnoreCase);
+
+            // تبدیل تگ‌های بلوک کد
+            text = Regex.Replace(text, @"<\s*pre\s*>\s*(.*?)\s*<\s*/\s*pre\s*>", "```\n$1\n```", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            text = Regex.Replace(text, @"<\s*/?\s*pre\s*>", "```", RegexOptions.IgnoreCase);
+
+            // تبدیل لینک‌ها
+            text = Regex.Replace(text, @"<a\s+href\s*=\s*[""']([^""']+)[""'][^>]*>(.*?)</a>", "[$2]($1)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+            // تبدیل خط جدید
+            text = Regex.Replace(text, @"<\s*br\s*/?\s*>", "\n", RegexOptions.IgnoreCase);
+
+            // حذف سایر تگ‌های متفرقه HTML
+            text = Regex.Replace(text, @"<[^>]+>", string.Empty);
+
+            // بازگرداندن کاراکترهای اسکیپ‌شده HTML
+            text = WebUtility.HtmlDecode(text);
+
+            return text;
+        }
+
+        public static string StripMarkdownAndHtml(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return string.Empty;
+            var clean = ConvertHtmlToMarkdown(text);
+            clean = clean.Replace("*", "").Replace("`", "");
+            return clean;
         }
 
         private async Task ShowMainMenuAsync(string chatId, CancellationToken ct)
@@ -1117,7 +1654,7 @@ namespace Invoice.Code
             {
                 keyboard = new[]
                 {
-                    new[] { new { text = "انصراف" } }
+                    new[] { new { text = "🔙 بازگشت" }, new { text = "❌ انصراف" } }
                 },
                 resize_keyboard = true,
                 one_time_keyboard = false
@@ -1131,7 +1668,7 @@ namespace Invoice.Code
                 keyboard = new object[]
                 {
                     new object[] { new { text = "📱 اشتراک‌گذاری شماره همراه من", request_contact = true } },
-                    new object[] { new { text = "انصراف", request_contact = false } }
+                    new object[] { new { text = "🔙 بازگشت" }, new { text = "❌ انصراف", request_contact = false } }
                 },
                 resize_keyboard = true,
                 one_time_keyboard = false

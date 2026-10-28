@@ -13,9 +13,14 @@
             </h4>
             <p class="text-muted small mb-0">ارسال خودکار نوتیفیکیشن و پیام به بله هنگام ثبت درخواست‌های جدید، فیش‌های واریزی و ثبت‌نام کاربران</p>
         </div>
-        <a asp-page="/Admin/Users/Index" class="btn btn-outline-secondary btn-sm">
-            <i class="fas fa-arrow-right me-1"></i> بازگشت به مدیریت کاربران
-        </a>
+        <div class="d-flex gap-2">
+            <a asp-page="/Admin/Bale/SendMessage" class="btn btn-warning btn-sm text-dark fw-bold">
+                <i class="fas fa-bullhorn me-1"></i> ارسال پیام به کاربران بله
+            </a>
+            <a asp-page="/Admin/Users/Index" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-arrow-right me-1"></i> بازگشت به مدیریت کاربران
+            </a>
+        </div>
     </div>
 
     @if (!string.IsNullOrEmpty(Model.ErrorMessage))
@@ -442,6 +447,22 @@
             </div>
         </div>
     </div>
+
+    <!-- کارت هدایت به صفحه مجزای ارسال پیام به کاربران -->
+    <div class="card shadow-sm border-0 mb-4 bg-primary bg-opacity-10 border-primary border-start border-4">
+        <div class="card-body d-flex justify-content-between align-items-center p-3 flex-wrap gap-2">
+            <div>
+                <h6 class="fw-bold mb-1 text-primary">
+                    <i class="fas fa-bullhorn me-2 text-warning"></i> صفحه اختصاصی ارسال پیام به کاربران بله
+                </h6>
+                <p class="text-muted small mb-0">مشاهده جدول کامل کاربران دارای شناسه چت، انتخاب چندتایی با چک‌باکس و ارسال پیام‌های گروهی، اختصاصی یا همگانی.</p>
+            </div>
+            <a asp-page="/Admin/Bale/SendMessage" class="btn btn-primary btn-sm px-3">
+                <i class="fas fa-users me-1"></i> مشاهده لیست کاربران و ارسال پیام
+            </a>
+        </div>
+    </div>
+
     @if (Model.RecentChats != null && Model.RecentChats.Count > 0)
     {
         <div class="card shadow-sm border-0 mb-4">
@@ -538,6 +559,11 @@
                 });
             });
         });
+
+        function toggleSingleChat(show) {
+            var box = document.getElementById('singleChatBox');
+            if (box) box.style.display = show ? 'block' : 'none';
+        }
     </script>
 }
 

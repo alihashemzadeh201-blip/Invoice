@@ -237,6 +237,23 @@
                             </div>
 
                             <div class="mb-3">
+                                <label asp-for="SelectedUsername" class="form-label fw-bold"></label>
+                                <div class="input-group">
+                                    <span class="input-group-text"><i class="fas fa-user"></i></span>
+                                    <input asp-for="SelectedUsername" class="form-control font-monospace" placeholder="پیش‌فرض: @(!string.IsNullOrWhiteSpace(Model.KarpooshehRequest.Phone) ? Model.KarpooshehRequest.Phone : Model.KarpooshehRequest.NationalId)" dir="ltr" />
+                                </div>
+                                <div class="form-text small">
+                                    نام کاربری جهت ورود به سامانه (شماره همراه یا کد/شناسه ملی).
+                                    @if (!string.IsNullOrWhiteSpace(Model.KarpooshehRequest.Description) && Model.KarpooshehRequest.Description.Contains("نام کاربری انتخابی"))
+                                    {
+                                        <span class="text-success fw-bold d-block mt-1">
+                                            <i class="fas fa-check-circle me-1"></i> @Model.KarpooshehRequest.Description
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
                                 <label asp-for="UserPassword" class="form-label fw-bold"></label>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="fas fa-lock"></i></span>

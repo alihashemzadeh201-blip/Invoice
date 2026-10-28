@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 using Invoices.Models;
 using Microsoft.AspNetCore.Authorization;
+using Invoice.Code;
 
 namespace Invoice.Pages_Admin_KarpooshehRequest
 {
@@ -14,10 +15,14 @@ namespace Invoice.Pages_Admin_KarpooshehRequest
     public class IndexModel : PageModel
     {
         private readonly Invoices.Models.DataContext _context;
+        private readonly IBaleUserBotService? _baleUserBotService;
 
-        public IndexModel(Invoices.Models.DataContext context)
+        public IndexModel(
+            Invoices.Models.DataContext context,
+            IBaleUserBotService? baleUserBotService = null)
         {
             _context = context;
+            _baleUserBotService = baleUserBotService;
         }
 
         public IList<KarpooshehRequest> KarpooshehRequest { get; set; } = default!;
@@ -47,6 +52,20 @@ namespace Invoice.Pages_Admin_KarpooshehRequest
 
             request.ReceiveDate = DateTime.Now;
             await _context.SaveChangesAsync();
+
+            // اطلاع‌رسانی به متقاضی در پیام‌رسان بله
+            if (_baleUserBotService != null && !string.IsNullOrWhiteSpace(request.BaleChatId))
+            {
+                try
+                {
+                    var msg = $"✅ متقاضی گرامی <b>{request.Name}</b>،\n\n" +
+                              $"درخواست شما با شماره پرونده <b>#{request.Id}</b> توسط کارشناس دریافت گردید و در نوبت استعلام و صدور شناسه یکتای مالیاتی قرار گرفت.\n" +
+                              $"به محض تکمیل مراحل، اطلاعات در همین ربات برای شما ارسال خواهد شد.";
+                    await _baleUserBotService.SendUserMessageAsync(request.BaleChatId, msg);
+                }
+                catch { }
+            }
+
             return RedirectToPage("Index");
         }
 
@@ -62,6 +81,19 @@ namespace Invoice.Pages_Admin_KarpooshehRequest
             {
                 return NotFound();
             }
+
+            // اطلاع‌رسانی رد درخواست به متقاضی در بله
+            if (_baleUserBotService != null && !string.IsNullOrWhiteSpace(request.BaleChatId))
+            {
+                try
+                {
+                    var msg = $"❌ متقاضی گرامی <b>{request.Name}</b>،\n\n" +
+                              $"درخواست اخذ شناسه یکتا (پرونده <b>#{request.Id}</b>) رد گردید.";
+                    await _baleUserBotService.SendUserMessageAsync(request.BaleChatId, msg);
+                }
+                catch { }
+            }
+
             _context.KarpooshehRequests.Remove(request);
             await _context.SaveChangesAsync();
             return RedirectToPage("Index");

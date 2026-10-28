@@ -63,15 +63,18 @@ namespace Invoice.Code
         private readonly DataContext _context;
         private readonly IUserActivityLogger _activityLogger;
         private readonly ILogger<BaleBotActionService> _logger;
+        private readonly IBaleUserBotService? _userBotService;
 
         public BaleBotActionService(
             DataContext context,
             IUserActivityLogger activityLogger,
-            ILogger<BaleBotActionService> logger)
+            ILogger<BaleBotActionService> logger,
+            IBaleUserBotService? userBotService = null)
         {
             _context = context;
             _activityLogger = activityLogger;
             _logger = logger;
+            _userBotService = userBotService;
         }
 
         public async Task<BaleActionResult> HandleActionAsync(string requestType, string action, int id, string? operatorInfo = null, CancellationToken ct = default)
@@ -208,6 +211,25 @@ namespace Invoice.Code
                     entityId: id.ToString(),
                     ct: ct);
 
+                // اطلاع‌رسانی فوری به متقاضی در پیام‌رسان بله
+                if (_userBotService != null)
+                {
+                    var targetChatId = req.BaleChatId;
+                    if (string.IsNullOrWhiteSpace(targetChatId))
+                    {
+                        var matchedUser = await _context.Users.FirstOrDefaultAsync(u => u.Username == req.Phone && !string.IsNullOrWhiteSpace(u.BaleChatId), ct);
+                        targetChatId = matchedUser?.BaleChatId;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(targetChatId))
+                    {
+                        var userNotice = $"✅ متقاضی گرامی <b>{req.Name}</b>،\n\n" +
+                                         $"درخواست شما با شماره پرونده <b>#{req.Id}</b> توسط کارشناس سامانه دریافت گردید و در نوبت استعلام و صدور شناسه یکتای مالیاتی قرار گرفت.\n" +
+                                         $"به محض صدور شناسه یکتا، مشخصات در همین ربات برای شما ارسال خواهد شد.";
+                        await _userBotService.SendUserMessageAsync(targetChatId, userNotice, ct: ct);
+                    }
+                }
+
                 return BaleActionResult.Ok(
                     $"✅ درخواست کارپوشه متقاضی <b>{req.Name}</b> (کد ملی: <code>{req.NationalId}</code>) تایید و وضعیت آن به 'دریافت شد' تغییر یافت.",
                     $"✅ تایید شد. وضعیت کارپوشه {req.Name} ثبت دریافت گردید.");
@@ -224,6 +246,25 @@ namespace Invoice.Code
                     $"رد درخواست شناسه یکتا برای متقاضی {req.Name} (شناسه ملی {req.NationalId}) توسط {operatorInfo}",
                     entityId: id.ToString(),
                     ct: ct);
+
+                // اطلاع‌رسانی به متقاضی در صورت رد درخواست
+                if (_userBotService != null)
+                {
+                    var targetChatId = req.BaleChatId;
+                    if (string.IsNullOrWhiteSpace(targetChatId))
+                    {
+                        var matchedUser = await _context.Users.FirstOrDefaultAsync(u => u.Username == req.Phone && !string.IsNullOrWhiteSpace(u.BaleChatId), ct);
+                        targetChatId = matchedUser?.BaleChatId;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(targetChatId))
+                    {
+                        var userNotice = $"❌ متقاضی گرامی <b>{req.Name}</b>،\n\n" +
+                                         $"درخواست ثبت‌نام و دریافت شناسه یکتای مالیاتی (پرونده <b>#{req.Id}</b>) توسط کارشناس رد شد.\n" +
+                                         $"جهت کسب اطلاعات بیشتر یا رفع نقص، با پشتیبانی سامانه در ارتباط باشید.";
+                        await _userBotService.SendUserMessageAsync(targetChatId, userNotice, ct: ct);
+                    }
+                }
 
                 return BaleActionResult.Ok(
                     $"❌ درخواست کارپوشه متقاضی <b>{req.Name}</b> رد و مختومه شد.",
@@ -374,7 +415,40 @@ namespace Invoice.Code
                 return BaleActionResult.Ok(summary);
             }
 
-            // 4) تحلیل دستورات تایید / رد متنی به زبان فارسی
+            // 4) ارسال پیام همگانی به کاربران بله
+            if (trimmed.StartsWith("ارسال به کاربران", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("ارسال همگانی", StringComparison.OrdinalIgnoreCase) ||
+                trimmed.StartsWith("/broadcast", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_userBotService == null)
+                {
+                    return BaleActionResult.Fail("سرویس ربات کاربران در دسترس نمی‌باشد.");
+                }
+
+                string msgText;
+                if (trimmed.StartsWith("/broadcast", StringComparison.OrdinalIgnoreCase))
+                {
+                    msgText = trimmed.Substring("/broadcast".Length).Trim();
+                }
+                else if (trimmed.StartsWith("ارسال به کاربران", StringComparison.OrdinalIgnoreCase))
+                {
+                    msgText = trimmed.Substring("ارسال به کاربران".Length).Trim();
+                }
+                else
+                {
+                    msgText = trimmed.Substring("ارسال همگانی".Length).Trim();
+                }
+
+                if (string.IsNullOrWhiteSpace(msgText))
+                {
+                    return BaleActionResult.Fail("لطفاً متن پیام را بعد از دستور وارد فرمایید.\n<i>مثال: ارسال همگانی با سلام، سامانه مودیان به‌روزرسانی شد.</i>");
+                }
+
+                var count = await _userBotService.BroadcastMessageAsync(msgText, null, ct);
+                return BaleActionResult.Ok($"📢 پیام همگانی با موفقیت به <b>{count} کاربر</b> در پیام‌رسان بله ارسال شد.");
+            }
+
+            // 5) تحلیل دستورات تایید / رد متنی به زبان فارسی
             var matchFa = Regex.Match(
                 trimmed,
                 @"^(تایید|تأیید|قبول|رد|حذف)\s+(کیف\s*پول|کیف|تراکنش|کارپوشه|شناسه\s*یکتا|بسته|اعتبار)\s*#?(\d+)$",
