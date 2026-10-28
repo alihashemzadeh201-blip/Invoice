@@ -32,6 +32,7 @@ namespace Invoices.Models
         public DbSet<CustomerPayment> CustomerPayments { get; set; }
         public DbSet<UserActivityLog> UserActivityLogs { get; set; }
         public DbSet<BaleUserState> BaleUserStates { get; set; }
+        public DbSet<UserFavoriteStuff> UserFavoriteStuffs { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -47,6 +48,10 @@ namespace Invoices.Models
                 e.HasIndex(x => x.Timestamp);
                 e.HasIndex(x => x.Category);
                 e.HasIndex(x => x.Username);
+            });
+            modelBuilder.Entity<UserFavoriteStuff>(e =>
+            {
+                e.HasIndex(x => new { x.Username, x.StuffCode }).IsUnique();
             });
             //modelBuilder.Entity<Profile>(e => e.HasIndex(s => s.TinCode).IsUnique());
             //modelBuilder.Entity<Stuff>(e => e.HasMany(p => p.InvoiceItems).WithOne(e => e.Stuff).HasForeignKey(e => e.Sstid).HasPrincipalKey(e => e.Code));

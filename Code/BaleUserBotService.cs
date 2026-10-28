@@ -47,6 +47,7 @@ namespace Invoice.Code
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IUserActivityLogger _activityLogger;
         private readonly ILogger<BaleUserBotService> _logger;
+        private readonly IKarpooshehRegistrationService? _registrationService;
 
         public BaleUserBotService(
             DataContext context,
@@ -54,7 +55,8 @@ namespace Invoice.Code
             IBaleNotificationService adminNotificationService,
             IHttpClientFactory httpClientFactory,
             IUserActivityLogger activityLogger,
-            ILogger<BaleUserBotService> logger)
+            ILogger<BaleUserBotService> logger,
+            IKarpooshehRegistrationService? registrationService = null)
         {
             _context = context;
             _settingsService = settingsService;
@@ -62,6 +64,7 @@ namespace Invoice.Code
             _httpClientFactory = httpClientFactory;
             _activityLogger = activityLogger;
             _logger = logger;
+            _registrationService = registrationService;
         }
 
         private static string HtmlSafe(string? input)
@@ -244,6 +247,22 @@ namespace Invoice.Code
             if (string.Equals(text, "⏳ تمدید دوره و اشتراک", StringComparison.OrdinalIgnoreCase))
             {
                 await ShowSubscriptionPlansAsync(chatId, ct);
+                return;
+            }
+
+            if (string.Equals(text, "🏢 مدیریت و انتخاب پروفایل فعال", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(text, "مدیریت پروفایل", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(text, "/profiles", StringComparison.OrdinalIgnoreCase))
+            {
+                await ShowResellerProfilesAsync(chatId, ct);
+                return;
+            }
+
+            if (string.Equals(text, "⭐ کالاهای منتخب و جستجوی شناسه", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(text, "کالاهای منتخب", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(text, "/favorites", StringComparison.OrdinalIgnoreCase))
+            {
+                await ShowFavoritesMenuAsync(chatId, ct);
                 return;
             }
 
@@ -542,6 +561,7 @@ namespace Invoice.Code
 
                 case "Login_Username":
                 case "Reg_PersonType":
+                case "Favorite_Search":
                     userState.CurrentStep = "None";
                     userState.StateDataJson = null;
                     await _context.SaveChangesAsync(ct);
@@ -845,6 +865,80 @@ namespace Invoice.Code
                     await PromptUsernameChoiceAsync(chatId, data, ct);
                     return;
 
+                case "Favorite_Search":
+                    var searchQuery = (text ?? "").Trim();
+                    if (string.IsNullOrWhiteSpace(searchQuery) || searchQuery.Length < 2)
+                    {
+                        await SendUserMessageAsync(chatId,
+                            "⚠️ عبارت جستجو باید حداقل ۲ کاراکتر باشد. لطفاً مجدداً ارسال فرمایید یا دکمه بازگشت را انتخاب نمایید:",
+                            GetCancelReplyKeyboard(),
+                            ct: ct);
+                        return;
+                    }
+
+                    var searchUser = await _context.Users.FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+                    if (searchUser == null)
+                    {
+                        userState.CurrentStep = "None";
+                        await _context.SaveChangesAsync(ct);
+                        await ShowMainMenuAsync(chatId, ct);
+                        return;
+                    }
+
+                    var foundStuffs = await _context.Stuffs
+                        .Where(s => s.Code.Contains(searchQuery) || s.Title.Contains(searchQuery))
+                        .Take(6)
+                        .ToListAsync(ct);
+
+                    if (!foundStuffs.Any())
+                    {
+                        await SendUserMessageAsync(chatId,
+                            $"🔍 متاسفانه موردی برای عبارت «<b>{HtmlSafe(searchQuery)}</b>» در شناسه‌های مالیاتی کالا و خدمات یافت نشد.\n\nمی‌توانید کلمه دیگری را جستجو فرمایید یا از دکمه بازگشت استفاده نمایید:",
+                            GetCancelReplyKeyboard(),
+                            ct: ct);
+                        return;
+                    }
+
+                    var existingFavCodes = (await _context.UserFavoriteStuffs
+                        .Where(f => f.Username == searchUser.Username)
+                        .Select(f => f.StuffCode)
+                        .ToListAsync(ct))
+                        .ToHashSet();
+
+                    var resultSb = new StringBuilder();
+                    resultSb.AppendLine($"🔍 <b>نتایج جستجو برای:</b> «{HtmlSafe(searchQuery)}»\n");
+
+                    var resultButtons = new List<object[]>();
+                    for (int i = 0; i < foundStuffs.Count; i++)
+                    {
+                        var st = foundStuffs[i];
+                        var isFav = existingFavCodes.Contains(st.Code);
+                        resultSb.AppendLine($"{i + 1}️⃣ <b>{HtmlSafe(st.Title)}</b>");
+                        resultSb.AppendLine($"   شناسه: <code>{st.Code}</code> | نرخ ارزش افزوده: <code>{st.VatRate}%</code>\n");
+
+                        if (isFav)
+                        {
+                            resultButtons.Add(new[]
+                            {
+                                new { text = $"❌ حذف {st.Code} از علاقه‌مندی", callback_data = $"fav_del:{st.Code}" }
+                            });
+                        }
+                        else
+                        {
+                            resultButtons.Add(new[]
+                            {
+                                new { text = $"⭐ افزودن {st.Code} به علاقه‌مندی", callback_data = $"fav_add:{st.Code}" }
+                            });
+                        }
+                    }
+
+                    userState.CurrentStep = "None";
+                    await _context.SaveChangesAsync(ct);
+
+                    await SendUserMessageAsync(chatId, resultSb.ToString(), new { inline_keyboard = resultButtons.ToArray() }, ct: ct);
+                    await ShowMainMenuAsync(chatId, ct);
+                    return;
+
                 default:
                     await ShowMainMenuAsync(chatId, ct);
                     return;
@@ -1066,6 +1160,107 @@ namespace Invoice.Code
                     }
                 }
             }
+
+            // عملیات خنثی برای دکمه‌های غیرفعال
+            if (data == "noop")
+            {
+                return;
+            }
+
+            // انتخاب پروفایل فعال توسط نماینده (Reseller)
+            if (data.StartsWith("reseller_prof:"))
+            {
+                var profIdStr = data.Substring("reseller_prof:".Length);
+                if (int.TryParse(profIdStr, out var targetProfId))
+                {
+                    var user = await _context.Users.Include(u => u.Profile).FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+                    if (user != null && string.Equals(user.Role, "reseller", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var targetProf = await _context.Profiles.FirstOrDefaultAsync(p => p.Id == targetProfId && (p.Creator == user.Username || p.Id == user.ProfileId), ct);
+                        if (targetProf != null)
+                        {
+                            user.ProfileId = targetProf.Id;
+                            await _context.SaveChangesAsync(ct);
+
+                            await SendUserMessageAsync(chatId,
+                                $"✅ <b>پروفایل فعال با موفقیت تغییر یافت.</b>\n\n" +
+                                $"🏢 <b>پروفایل انتخابی:</b> {HtmlSafe(targetProf.DisplayName)}\n" +
+                                $"🔑 <b>شناسه یکتای حافظه مالیاتی:</b> <code>{targetProf.MemoryId ?? "-"}</code>\n" +
+                                $"🆔 <b>کد اقتصادی / ملی:</b> <code>{targetProf.TinCode ?? "-"}</code>\n\n" +
+                                $"از این پس کلیه فاکتورهای جدید ارسالی با این مشخصات صادر و امضا خواهند شد.",
+                                ct: ct);
+
+                            await ShowMainMenuAsync(chatId, ct);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // شروع فرآیند جستجوی شناسه کالا/خدمت
+            if (data == "fav_search_start")
+            {
+                userState.CurrentStep = "Favorite_Search";
+                userState.StateDataJson = null;
+                await _context.SaveChangesAsync(ct);
+
+                await SendUserMessageAsync(chatId,
+                    "🔍 <b>جستجوی شناسه کالا و خدمات مالیاتی</b>\n\n" +
+                    "لطفاً بخشی از عنوان، شرح یا کد ۱۳ رقمی شناسه کالا/خدمت مورد نظر خود را ارسال فرمایید:\n" +
+                    "(جهت انصراف، دکمه «انصراف» یا «بازگشت» را لمس فرمایید)",
+                    GetCancelReplyKeyboard(),
+                    ct: ct);
+                return;
+            }
+
+            // افزودن کالا به لیست علاقه‌مندی‌ها
+            if (data.StartsWith("fav_add:"))
+            {
+                var code = data.Substring("fav_add:".Length).Trim();
+                var user = await _context.Users.FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+                if (user != null)
+                {
+                    var exists = await _context.UserFavoriteStuffs.AnyAsync(f => f.Username == user.Username && f.StuffCode == code, ct);
+                    if (!exists)
+                    {
+                        _context.UserFavoriteStuffs.Add(new UserFavoriteStuff
+                        {
+                            Username = user.Username,
+                            StuffCode = code,
+                            AddedDate = DateTime.Now
+                        });
+                        await _context.SaveChangesAsync(ct);
+                    }
+
+                    var stuff = await _context.Stuffs.FindAsync(new object[] { code }, ct);
+                    var title = stuff?.Title ?? code;
+                    await SendUserMessageAsync(chatId,
+                        $"⭐ کالا با شناسه <code>{code}</code> («<b>{HtmlSafe(title)}</b>») با موفقیت به لیست کالاهای منتخب شما اضافه شد.",
+                        ct: ct);
+                    return;
+                }
+            }
+
+            // حذف کالا از لیست علاقه‌مندی‌ها
+            if (data.StartsWith("fav_del:"))
+            {
+                var code = data.Substring("fav_del:".Length).Trim();
+                var user = await _context.Users.FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+                if (user != null)
+                {
+                    var fav = await _context.UserFavoriteStuffs.FirstOrDefaultAsync(f => f.Username == user.Username && f.StuffCode == code, ct);
+                    if (fav != null)
+                    {
+                        _context.UserFavoriteStuffs.Remove(fav);
+                        await _context.SaveChangesAsync(ct);
+                    }
+
+                    await SendUserMessageAsync(chatId,
+                        $"❌ شناسه کالا <code>{code}</code> از لیست علاقه‌مندی‌های شما حذف گردید.",
+                        ct: ct);
+                    return;
+                }
+            }
         }
 
         private async Task CreateAndSendRegistrationInvoiceAsync(string chatId, BaleUserState userState, string? fromUsername, CancellationToken ct)
@@ -1109,6 +1304,18 @@ namespace Invoice.Code
 
             _context.KarpooshehRequests.Add(req);
             await _context.SaveChangesAsync(ct);
+
+            if (_registrationService != null)
+            {
+                try
+                {
+                    await _registrationService.ProvisionUserAndProfileForRequestAsync(req, "123456", ct);
+                }
+                catch (Exception exReg)
+                {
+                    _logger.LogError(exReg, "خطا در تولید خودکار کلیدهای RSA و ثبت‌نام متقاضی برای درخواست #{RequestId}", req.Id);
+                }
+            }
 
             if (fee <= 0)
             {
@@ -1167,6 +1374,18 @@ namespace Invoice.Code
                         req.BaleChatId = chatId;
                         if (!string.IsNullOrWhiteSpace(fromUsername)) req.BaleUsername = fromUsername;
                         await _context.SaveChangesAsync(ct);
+
+                        if (_registrationService != null)
+                        {
+                            try
+                            {
+                                await _registrationService.ProvisionUserAndProfileForRequestAsync(req, "123456", ct);
+                            }
+                            catch (Exception exReg)
+                            {
+                                _logger.LogError(exReg, "خطا در بررسی/ثبت کاربر برای درخواست پرداخت‌شده #{RequestId}", req.Id);
+                            }
+                        }
 
                         // بازنشانی وضعیت مکالمه کاربر
                         var state = await _context.BaleUserStates.FindAsync(chatId);
@@ -1567,20 +1786,18 @@ namespace Invoice.Code
             var text = html;
 
             // تبدیل تگ‌های بولد با پشتیبانی از فاصله‌های درون تگ
-            text = Regex.Replace(text, @"<\s*(b|strong)\s*>\s*(.*?)\s*<\s*/\s*(b|strong)\s*>", "*$2*", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            text = Regex.Replace(text, @"<\s*/?\s*(b|strong)\s*>", "*", RegexOptions.IgnoreCase);
+            text = Regex.Replace(text, @"<\s*(?:b|strong)\s*>\s*(.*?)\s*<\s*/\s*(?:b|strong)\s*>", "*$1*", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            text = Regex.Replace(text, @"<\s*/?\s*(?:b|strong)\s*>", "*", RegexOptions.IgnoreCase);
 
             // تبدیل تگ‌های ایتالیک با پشتیبانی از فاصله‌های درون تگ
-            text = Regex.Replace(text, @"<\s*(i|em)\s*>\s*(.*?)\s*<\s*/\s*(i|em)\s*>", "_$2_", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            text = Regex.Replace(text, @"<\s*/?\s*(i|em)\s*>", "_", RegexOptions.IgnoreCase);
+            text = Regex.Replace(text, @"<\s*(?:i|em)\s*>\s*(.*?)\s*<\s*/\s*(?:i|em)\s*>", "_$1_", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+            text = Regex.Replace(text, @"<\s*/?\s*(?:i|em)\s*>", "_", RegexOptions.IgnoreCase);
 
             // تبدیل تگ‌های کد درون‌خطی
-            text = Regex.Replace(text, @"<\s*code\s*>\s*(.*?)\s*<\s*/\s*code\s*>", "`$2`", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            text = Regex.Replace(text, @"<\s*/?\s*code\s*>", "`", RegexOptions.IgnoreCase);
+            text = Regex.Replace(text, @"<\s*code\s*>\s*(.*?)\s*<\s*/\s*code\s*>", "`$1`", RegexOptions.IgnoreCase | RegexOptions.Singleline);
 
             // تبدیل تگ‌های بلوک کد
             text = Regex.Replace(text, @"<\s*pre\s*>\s*(.*?)\s*<\s*/\s*pre\s*>", "```\n$1\n```", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-            text = Regex.Replace(text, @"<\s*/?\s*pre\s*>", "```", RegexOptions.IgnoreCase);
 
             // تبدیل لینک‌ها
             text = Regex.Replace(text, @"<a\s+href\s*=\s*[""']([^""']+)[""'][^>]*>(.*?)</a>", "[$2]($1)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
@@ -1609,24 +1826,45 @@ namespace Invoice.Code
         {
             var user = await _context.Users.Include(u => u.Profile).FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
             var isRegistered = user != null && user.Profile != null;
+            var isReseller = user != null && string.Equals(user.Role, "reseller", StringComparison.OrdinalIgnoreCase);
 
             var welcome = isRegistered
-                ? $"سلام <b>{HtmlSafe(user.DisplayName)}</b> عزیز، به پنل اختصاصی سامانه مودیان خوش آمدید.\nجهت انجام امور از منوی زیر استفاده فرمایید:"
+                ? $"سلام <b>{HtmlSafe(user.DisplayName)}</b> عزیز، به پنل اختصاصی سامانه مودیان خوش آمدید." +
+                  (isReseller && user.Profile != null ? $"\n🏢 <b>پروفایل فعال جاری:</b> {HtmlSafe(user.Profile.DisplayName)} (حافظه مالیاتی: <code>{user.Profile.MemoryId ?? "-"}</code>)" : "") +
+                  "\nجهت انجام امور از منوی زیر استفاده فرمایید:"
                 : "👋 سلام، به <b>ربات سامانه صدور فاکتور و کارپوشه مودیان</b> خوش آمدید.\n\n" +
                   "جهت دریافت شناسه یکتا و ارسال فاکتور، لطفاً از گزینه‌های زیر استفاده نمایید:";
 
-            await SendUserMessageAsync(chatId, welcome, GetMainUserReplyKeyboard(isRegistered), ct: ct);
+            await SendUserMessageAsync(chatId, welcome, GetMainUserReplyKeyboard(isRegistered, isReseller), ct: ct);
         }
 
-        private static object GetMainUserReplyKeyboard(bool isRegistered)
+        private static object GetMainUserReplyKeyboard(bool isRegistered, bool isReseller = false)
         {
             if (isRegistered)
             {
+                if (isReseller)
+                {
+                    return new
+                    {
+                        keyboard = new[]
+                        {
+                            new[] { new { text = "📄 ارسال فاکتور جدید" }, new { text = "❌ ابطال فاکتور" } },
+                            new[] { new { text = "🏢 مدیریت و انتخاب پروفایل فعال" } },
+                            new[] { new { text = "⭐ کالاهای منتخب و جستجوی شناسه" } },
+                            new[] { new { text = "💰 کیف پول و موجودی" }, new { text = "⏳ تمدید دوره و اشتراک" } },
+                            new[] { new { text = "👤 وضعیت پرونده و شناسه یکتا" }, new { text = "❓ راهنما و پشتیبانی" } }
+                        },
+                        resize_keyboard = true,
+                        one_time_keyboard = false
+                    };
+                }
+
                 return new
                 {
                     keyboard = new[]
                     {
                         new[] { new { text = "📄 ارسال فاکتور جدید" }, new { text = "❌ ابطال فاکتور" } },
+                        new[] { new { text = "⭐ کالاهای منتخب و جستجوی شناسه" } },
                         new[] { new { text = "💰 کیف پول و موجودی" }, new { text = "⏳ تمدید دوره و اشتراک" } },
                         new[] { new { text = "👤 وضعیت پرونده و شناسه یکتا" }, new { text = "❓ راهنما و پشتیبانی" } }
                     },
@@ -1646,6 +1884,116 @@ namespace Invoice.Code
                 resize_keyboard = true,
                 one_time_keyboard = false
             };
+        }
+
+        private async Task ShowResellerProfilesAsync(string chatId, CancellationToken ct)
+        {
+            var user = await _context.Users.Include(u => u.Profile).FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+            if (user == null || !string.Equals(user.Role, "reseller", StringComparison.OrdinalIgnoreCase))
+            {
+                await SendUserMessageAsync(chatId,
+                    "⚠️ این بخش اختصاصی کاربران با نقش «نماینده» (Reseller) می‌باشد.",
+                    ct: ct);
+                return;
+            }
+
+            var profiles = await _context.Profiles
+                .Where(p => p.Creator == user.Username || p.Id == user.ProfileId)
+                .OrderBy(p => p.FirstName)
+                .ThenBy(p => p.Lastname)
+                .ToListAsync(ct);
+
+            if (!profiles.Any())
+            {
+                await SendUserMessageAsync(chatId,
+                    "⚠️ در حال حاضر هیچ پروفایلی تحت مدیریت حساب نمایندگی شما یافت نشد.\nپروفایل‌های ثبت‌شده در وب به صورت خودکار در این لیست نمایش داده خواهند شد.",
+                    ct: ct);
+                return;
+            }
+
+            var buttons = new List<object[]>();
+            foreach (var p in profiles)
+            {
+                var isActive = p.Id == user.ProfileId;
+                var label = isActive
+                    ? $"✅ {p.DisplayName} (فعال)"
+                    : $"🔘 {p.DisplayName}";
+                var cbData = isActive ? "noop" : $"reseller_prof:{p.Id}";
+                buttons.Add(new[] { new { text = label, callback_data = cbData } });
+            }
+
+            var currentName = user.Profile != null ? user.Profile.DisplayName : "انتخاب نشده";
+            var currentMem = user.Profile?.MemoryId ?? "-";
+            var currentTin = user.Profile?.TinCode ?? "-";
+
+            var msg = "🏢 <b>مدیریت و انتخاب پروفایل فعال نمایندگی</b>\n\n" +
+                      $"👤 <b>نماینده:</b> {HtmlSafe(user.Username)}\n" +
+                      $"✅ <b>پروفایل فعال کنونی:</b> {HtmlSafe(currentName)}\n" +
+                      $"🔑 <b>شناسه حافظه مالیاتی:</b> <code>{currentMem}</code>\n" +
+                      $"🆔 <b>کد اقتصادی / ملی:</b> <code>{currentTin}</code>\n\n" +
+                      "جهت تغییر پروفایل فعال برای صدور و ارسال فاکتور، روی نام مودی/شرکت مورد نظر در زیر کلیک نمایید:";
+
+            await SendUserMessageAsync(chatId, msg, new { inline_keyboard = buttons.ToArray() }, ct: ct);
+        }
+
+        private async Task ShowFavoritesMenuAsync(string chatId, CancellationToken ct)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+            if (user == null)
+            {
+                await SendUserMessageAsync(chatId,
+                    "⚠️ شما هنوز حسابی در سامانه متصل نکرده‌اید. لطفاً ابتدا ثبت‌نام کرده یا وارد حساب خود شوید.",
+                    ct: ct);
+                return;
+            }
+
+            var favorites = await _context.UserFavoriteStuffs
+                .Include(f => f.Stuff)
+                .Where(f => f.Username == user.Username)
+                .OrderByDescending(f => f.AddedDate)
+                .Take(15)
+                .ToListAsync(ct);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("⭐ <b>لیست کالاهای منتخب و علاقه‌مندی‌های شما</b>\n");
+
+            if (!favorites.Any())
+            {
+                sb.AppendLine("هنوز کالایی را به لیست علاقه‌مندی‌های خود اضافه نکرده‌اید.");
+                sb.AppendLine("با استفاده از دکمه «🔍 جستجوی شناسه کالا و خدمات»، کالای مورد نظر را جستجو و با یک کلیک به لیست خود اضافه کنید.");
+            }
+            else
+            {
+                sb.AppendLine($"تعداد کالاهای منتخب: <b>{favorites.Count} مورد</b>\n");
+                int idx = 1;
+                foreach (var f in favorites)
+                {
+                    var title = f.Stuff?.Title ?? "بدون شرح";
+                    var vat = f.Stuff != null ? $"{f.Stuff.VatRate}%" : "-";
+                    sb.AppendLine($"{idx}️⃣ <b>{HtmlSafe(title)}</b>");
+                    sb.AppendLine($"   شناسه: <code>{f.StuffCode}</code> | مالیات: <code>{vat}</code>");
+                    idx++;
+                }
+            }
+
+            var inlineButtons = new List<object[]>();
+            inlineButtons.Add(new[] { new { text = "🔍 جستجوی شناسه کالا و خدمات", callback_data = "fav_search_start" } });
+
+            if (favorites.Any())
+            {
+                // دکمه‌های حذف برای ۵ کالای اول
+                foreach (var f in favorites.Take(5))
+                {
+                    var shortTitle = (f.Stuff?.Title ?? f.StuffCode);
+                    if (shortTitle.Length > 20) shortTitle = shortTitle.Substring(0, 18) + "...";
+                    inlineButtons.Add(new[]
+                    {
+                        new { text = $"❌ حذف {shortTitle}", callback_data = $"fav_del:{f.StuffCode}" }
+                    });
+                }
+            }
+
+            await SendUserMessageAsync(chatId, sb.ToString(), new { inline_keyboard = inlineButtons.ToArray() }, ct: ct);
         }
 
         private static object GetCancelReplyKeyboard()

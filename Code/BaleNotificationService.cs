@@ -387,37 +387,49 @@ namespace Invoice.Code
 
                 var nowShamsi = MyDate.GetPersianDate(transaction.Date != default ? transaction.Date : DateTime.Now)?.ToString() ?? "-";
                 var amountFormatted = transaction.Price.HasValue ? transaction.Price.Value.ToString("N0") + " ریال" : "نامشخص";
-                var payType = transaction.ByCash ? "واریز نقدی" : "کارت به کارت / فیش";
+                var isAutoConfirmed = transaction.Confirm == true;
+                var payType = transaction.ByCash ? "واریز نقدی" : (isAutoConfirmed ? "پرداخت آنلاین پیام‌رسان بله" : "کارت به کارت / فیش");
                 var baseUrl = GetBaseUrl(settings);
                 var targetPath = transaction.Id > 0
-                    ? $"/Admin/Transaction/Confirm?id={transaction.Id}"
+                    ? (isAutoConfirmed ? "/Admin/Transaction/Index" : $"/Admin/Transaction/Confirm?id={transaction.Id}")
                     : "/Admin/Transaction/Index";
                 var targetUrl = BuildAbsoluteUrl(baseUrl, targetPath);
 
-                var message = $@"💰 <b>درخواست افزایش موجودی کیف پول</b>
+                var title = isAutoConfirmed
+                    ? "💰 <b>افزایش موجودی کیف پول (پرداخت آنلاین بله - شارژ مستقیم)</b>"
+                    : "💰 <b>درخواست افزایش موجودی کیف پول</b>";
+                var statusLine = isAutoConfirmed
+                    ? "✅ <b>وضعیت:</b> شارژ خودکار انجام شد (بدون نیاز به تایید ادمین)\n"
+                    : "";
+                var actionLinkText = isAutoConfirmed
+                    ? "مشاهده تراکنش‌های کیف پول"
+                    : "بررسی و تایید تراکنش کیف پول";
+
+                var message = $@"{title}
 🏷️ {HtmlSafe(settings.CustomTitle)}
 
 👤 <b>کاربر:</b> <code>{HtmlSafe(transaction.CustomerUsername)}</code>
 💵 <b>مبلغ:</b> {HtmlSafe(amountFormatted)}
-💳 <b>شماره کارت مبدا:</b> <code>{HtmlSafe(transaction.SourceCardNumber)}</code>
+💳 <b>شماره کارت مبدا / درگاه:</b> <code>{HtmlSafe(transaction.SourceCardNumber)}</code>
 🧾 <b>رسید بانکی / پیگیری:</b> <code>{HtmlSafe(transaction.BankTransactionReceipt)}</code>
 🔄 <b>روش پرداخت:</b> {HtmlSafe(payType)}
-📝 <b>توضیحات:</b> {HtmlSafe(transaction.Description)}
+{statusLine}📝 <b>توضیحات:</b> {HtmlSafe(transaction.Description)}
 📅 <b>تاریخ ثبت:</b> {HtmlSafe(nowShamsi)}
 🔗 <b>شناسه تراکنش:</b> #{transaction.Id}
-🔗 <a href=""{targetUrl}"">بررسی و تایید تراکنش کیف پول</a>";
+🔗 <a href=""{targetUrl}"">{actionLinkText}</a>";
 
                 object? replyMarkup = null;
                 if (settings.BotInteractivityEnabled && transaction.Id > 0)
                 {
-                    var keyboard = new List<List<object>>
+                    var keyboard = new List<List<object>>();
+                    if (!isAutoConfirmed)
                     {
-                        new List<object>
+                        keyboard.Add(new List<object>
                         {
                             new { text = "✅ تایید", callback_data = $"wallet:approve:{transaction.Id}" },
                             new { text = "❌ رد درخواست", callback_data = $"wallet:reject:{transaction.Id}" }
-                        }
-                    };
+                        });
+                    }
                     if (IsValidHttpUrl(targetUrl))
                     {
                         keyboard.Add(new List<object>
@@ -425,7 +437,10 @@ namespace Invoice.Code
                             new { text = "🔗 مشاهده در پنل مدیریت", url = targetUrl }
                         });
                     }
-                    replyMarkup = new { inline_keyboard = keyboard };
+                    if (keyboard.Count > 0)
+                    {
+                        replyMarkup = new { inline_keyboard = keyboard };
+                    }
                 }
 
                 await SendMessageAsync(message, null, "HTML", replyMarkup, ct);

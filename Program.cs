@@ -74,6 +74,7 @@ builder.Services.AddDataProtection()
     .SetApplicationName("Invoice")
     .PersistKeysToFileSystem(new DirectoryInfo(keyRingPath));
 builder.Services.AddScoped<IProfileSecretProtector, ProfileSecretProtector>();
+builder.Services.AddScoped<IKarpooshehRegistrationService, KarpooshehRegistrationService>();
 
 builder.Services.AddSession(p =>
 {
@@ -154,6 +155,17 @@ IF COL_LENGTH('KarpooshehRequests', 'BaleUsername') IS NULL ALTER TABLE Karpoosh
 IF COL_LENGTH('KarpooshehRequests', 'IsPaid') IS NULL ALTER TABLE KarpooshehRequests ADD IsPaid BIT NOT NULL CONSTRAINT DF_Karpoosheh_IsPaid DEFAULT 0;
 IF COL_LENGTH('KarpooshehRequests', 'PaymentReference') IS NULL ALTER TABLE KarpooshehRequests ADD PaymentReference NVARCHAR(100) NULL;
 IF COL_LENGTH('KarpooshehRequests', 'PaymentAmount') IS NULL ALTER TABLE KarpooshehRequests ADD PaymentAmount INT NULL;
+IF COL_LENGTH('Profiles', 'PublicKey') IS NULL ALTER TABLE Profiles ADD PublicKey NVARCHAR(MAX) NULL;
+IF OBJECT_ID(N'[UserFavoriteStuffs]', 'U') IS NULL
+BEGIN
+    CREATE TABLE [UserFavoriteStuffs] (
+        [Id] INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+        [Username] NVARCHAR(100) NOT NULL,
+        [StuffCode] NVARCHAR(100) NOT NULL,
+        [AddedDate] DATETIME2 NOT NULL DEFAULT GETDATE()
+    );
+    CREATE UNIQUE INDEX [IX_UserFavoriteStuffs_User_Stuff] ON [UserFavoriteStuffs] ([Username], [StuffCode]);
+END
 ");
     }
     catch (Exception exSchema)

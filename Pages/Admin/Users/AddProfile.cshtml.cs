@@ -135,5 +135,65 @@ namespace Invoice.Pages.Admin.Users
                 return (RedirectToPage("Profiles"));
 
         }
+
+        public async Task<IActionResult> OnGetDownloadPrivateKeyAsync(int id)
+        {
+            var username = User.Identity?.Name;
+            var profile = await _context.Profiles.FindAsync(id);
+            if (profile == null) return NotFound();
+
+            if (profile.Creator != username && !User.IsInRole("admin"))
+            {
+                return Forbid();
+            }
+
+            if (string.IsNullOrWhiteSpace(profile.PrivateKey))
+            {
+                return NotFound("کلید خصوصی برای این پروفایل ثبت نشده است.");
+            }
+
+            var plainKey = _secretProtector.Unprotect(profile.PrivateKey);
+            if (string.IsNullOrWhiteSpace(plainKey))
+            {
+                return NotFound("کلید خصوصی معتبر نیست.");
+            }
+
+            var bytes = System.Text.Encoding.UTF8.GetBytes(RsaKeyHelper.NormalizePem(plainKey));
+            var filename = $"private_key_{profile.TinCode ?? id.ToString()}.pem";
+            return File(bytes, "application/x-pem-file", filename);
+        }
+
+        public async Task<IActionResult> OnGetDownloadPublicKeyAsync(int id)
+        {
+            var username = User.Identity?.Name;
+            var profile = await _context.Profiles.FindAsync(id);
+            if (profile == null) return NotFound();
+
+            if (profile.Creator != username && !User.IsInRole("admin"))
+            {
+                return Forbid();
+            }
+
+            var publicKey = profile.PublicKey;
+            if (string.IsNullOrWhiteSpace(publicKey) && !string.IsNullOrWhiteSpace(profile.PrivateKey))
+            {
+                var plainPrivate = _secretProtector.Unprotect(profile.PrivateKey);
+                publicKey = RsaKeyHelper.TryExtractPublicKeyFromPrivateKeyPem(plainPrivate);
+                if (!string.IsNullOrWhiteSpace(publicKey))
+                {
+                    profile.PublicKey = publicKey;
+                    await _context.SaveChangesAsync();
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(publicKey))
+            {
+                return NotFound("کلید عمومی برای این پروفایل ثبت نشده است.");
+            }
+
+            var bytes = System.Text.Encoding.UTF8.GetBytes(RsaKeyHelper.NormalizePem(publicKey));
+            var filename = $"public_key_{profile.TinCode ?? id.ToString()}.pem";
+            return File(bytes, "application/x-pem-file", filename);
+        }
     }
 }

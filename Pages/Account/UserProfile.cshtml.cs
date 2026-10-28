@@ -109,5 +109,60 @@ namespace Invoice.Pages.Account
 
             return RedirectToPage("/Index");
         }
+
+        public async Task<IActionResult> OnGetDownloadPrivateKeyAsync()
+        {
+            var username = User.Identity?.Name;
+            if (string.IsNullOrEmpty(username)) return Forbid();
+
+            var user = await _context.Users.Include(p => p.Profile).SingleOrDefaultAsync(p => p.Username == username);
+            if (user?.Profile?.PrivateKey == null)
+            {
+                return NotFound("کلید خصوصی برای این کاربر ثبت نشده است.");
+            }
+
+            var plainKey = _secretProtector.Unprotect(user.Profile.PrivateKey);
+            if (string.IsNullOrWhiteSpace(plainKey))
+            {
+                return NotFound("کلید خصوصی معتبر نیست.");
+            }
+
+            var bytes = System.Text.Encoding.UTF8.GetBytes(RsaKeyHelper.NormalizePem(plainKey));
+            var filename = $"private_key_{user.Profile.TinCode ?? username}.pem";
+            return File(bytes, "application/x-pem-file", filename);
+        }
+
+        public async Task<IActionResult> OnGetDownloadPublicKeyAsync()
+        {
+            var username = User.Identity?.Name;
+            if (string.IsNullOrEmpty(username)) return Forbid();
+
+            var user = await _context.Users.Include(p => p.Profile).SingleOrDefaultAsync(p => p.Username == username);
+            if (user?.Profile == null)
+            {
+                return NotFound("پروفایل برای این کاربر یافت نشد.");
+            }
+
+            var publicKey = user.Profile.PublicKey;
+            if (string.IsNullOrWhiteSpace(publicKey) && !string.IsNullOrWhiteSpace(user.Profile.PrivateKey))
+            {
+                var plainPrivate = _secretProtector.Unprotect(user.Profile.PrivateKey);
+                publicKey = RsaKeyHelper.TryExtractPublicKeyFromPrivateKeyPem(plainPrivate);
+                if (!string.IsNullOrWhiteSpace(publicKey))
+                {
+                    user.Profile.PublicKey = publicKey;
+                    await _context.SaveChangesAsync();
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(publicKey))
+            {
+                return NotFound("کلید عمومی برای این مودی ثبت نشده است.");
+            }
+
+            var bytes = System.Text.Encoding.UTF8.GetBytes(RsaKeyHelper.NormalizePem(publicKey));
+            var filename = $"public_key_{user.Profile.TinCode ?? username}.pem";
+            return File(bytes, "application/x-pem-file", filename);
+        }
     }
 }

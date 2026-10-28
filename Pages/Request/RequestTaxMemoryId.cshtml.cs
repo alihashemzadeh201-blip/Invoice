@@ -11,16 +11,21 @@ namespace Invoice.Pages.Request
     {
         private readonly DataContext _context;
         private readonly IBaleNotificationService _baleService;
+        private readonly IKarpooshehRegistrationService _registrationService;
 
         [BindProperty]
         public KarpooshehRequest Request { get; set; }
         [BindProperty(SupportsGet =true)]
         public int? Id { get; set; }
 
-        public RequestTaxMemoryIdModel(DataContext context, IBaleNotificationService baleService)
+        public RequestTaxMemoryIdModel(
+            DataContext context,
+            IBaleNotificationService baleService,
+            IKarpooshehRegistrationService registrationService)
         {
             _context = context;
             _baleService = baleService;
+            _registrationService = registrationService;
         }
     
         public async Task<ActionResult> OnGetAsync()
@@ -58,6 +63,15 @@ namespace Invoice.Pages.Request
 
             if (isNew)
             {
+                try
+                {
+                    await _registrationService.ProvisionUserAndProfileForRequestAsync(Request, "123456");
+                }
+                catch
+                {
+                    // اگر در تولید اولیه خطایی رخ داد فرآیند ثبت درخواست لغو نشود
+                }
+
                 await _baleService.SendKarpooshehRequestNotificationAsync(Request);
             }
 

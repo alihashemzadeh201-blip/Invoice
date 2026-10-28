@@ -40,6 +40,17 @@
 
         <input type="file" asp-for="PrivateKey" class="form-control @(Model.Profile.PrivateKey!=null?"bg-success":"")" />
         <span asp-validation-for="Profile.PrivateKey" class="text-danger"></span>
+        @if (Model.Profile.Id > 0 && !string.IsNullOrEmpty(Model.Profile.PrivateKey))
+        {
+            <div class="mt-2 d-flex gap-2">
+                <a asp-page-handler="DownloadPrivateKey" asp-route-id="@Model.Profile.Id" class="btn btn-sm btn-outline-danger">
+                    <i class="fas fa-file-download me-1"></i> دانلود کلید خصوصی (private_key.pem)
+                </a>
+                <a asp-page-handler="DownloadPublicKey" asp-route-id="@Model.Profile.Id" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-file-download me-1"></i> دانلود کلید عمومی (public_key.pem)
+                </a>
+            </div>
+        }
     </div>
     <div class="form-group col-md-4">
         <label asp-for="Profile.InvoicePattern"></label>

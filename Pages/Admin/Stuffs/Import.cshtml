@@ -1,0 +1,113 @@
+@page
+@model Invoice.Pages.Admin.Stuffs.ImportModel
+@{
+    ViewBag.Title = "بارگذاری انبوه شناسه‌های کالا و خدمات از اکسل";
+    Layout = "~/Pages/Shared/_layout.cshtml";
+}
+
+<div class="container-fluid px-0">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="mb-0 text-primary">
+            <i class="fas fa-file-excel me-2"></i> بارگذاری انبوه شناسه‌های کالا و خدمات از اکسل
+        </h4>
+        <a asp-page="./Index" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-right me-1"></i> بازگشت به لیست شناسه‌ها
+        </a>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(Model.ErrorMessage))
+    {
+        <div class="alert alert-danger alert-dismissible fade show border-0 shadow-sm mb-3" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i> @Model.ErrorMessage
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="بستن"></button>
+        </div>
+    }
+
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-light py-3">
+                    <h5 class="card-title mb-0 text-secondary">
+                        <i class="fas fa-upload me-2 text-success"></i> فرم انتخاب و بارگذاری فایل اکسل
+                    </h5>
+                </div>
+                <div class="card-body p-4">
+                    <form method="post" enctype="multipart/form-data">
+                        <div class="mb-4">
+                            <label asp-for="ExcelFile" class="form-label fw-bold"></label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fas fa-file-excel text-success"></i></span>
+                                <input asp-for="ExcelFile" type="file" class="form-control" accept=".xlsx" required />
+                            </div>
+                            <span asp-validation-for="ExcelFile" class="text-danger small"></span>
+                            <div class="form-text small text-muted mt-2">
+                                فرمت فایل باید استاندارد اکسل (<code>.xlsx</code>) باشد. می‌توانید از قالب نمونه آماده دانلود نمایید.
+                            </div>
+                        </div>
+
+                        <div class="form-check form-switch mb-4">
+                            <input asp-for="UpdateExisting" class="form-check-input" type="checkbox" id="updateExistingCheck" />
+                            <label class="form-check-label fw-bold" for="updateExistingCheck">
+                                @Html.DisplayNameFor(m => m.UpdateExisting)
+                            </label>
+                            <div class="form-text small text-muted">
+                                در صورت فعال بودن این گزینه، اگر شناسه کالا قبلاً در سامانه ثبت شده باشد، شرح، نرخ مالیات و نوع آن با اطلاعات فایل اکسل جدید بروزرسانی می‌شود.
+                            </div>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-success btn-lg flex-grow-1" onclick="this.disabled=true; this.innerHTML='<i class=\'fas fa-spinner fa-spin me-2\'></i> در حال بارگذاری و پردازش...'; this.form.submit();">
+                                <i class="fas fa-cloud-upload-alt me-2"></i> بارگذاری و ثبت در دیتابیس
+                            </button>
+                            <a asp-page="./Index" class="btn btn-outline-secondary btn-lg">
+                                انصراف
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card shadow-sm border-0 mb-3 border-top border-info border-3">
+                <div class="card-header bg-light py-3">
+                    <h5 class="card-title mb-0 text-info">
+                        <i class="fas fa-info-circle me-2"></i> راهنمای ستون‌های فایل اکسل
+                    </h5>
+                </div>
+                <div class="card-body p-3">
+                    <p class="small text-muted mb-3">
+                        فایل اکسل ارسالی می‌تواند شامل ستون‌های استاندارد سازمان امور مالیاتی باشد. سیستم به صورت خودکار ستون‌ها را بر اساس نام هدر شناسایی می‌کند:
+                    </p>
+                    <ul class="list-group list-group-flush small">
+                        <li class="list-group-item px-0">
+                            <strong>شناسه کالا/خدمت (اجباری):</strong> کد اختصاصی یا عمومی (مانند <code>2720000123456</code>)
+                        </li>
+                        <li class="list-group-item px-0">
+                            <strong>شرح کالا/خدمت (اجباری):</strong> عنوان رسمی کالا یا خدمت
+                        </li>
+                        <li class="list-group-item px-0">
+                            <strong>نرخ ارزش افزوده:</strong> درصد مالیات بر ارزش افزوده (مانند <code>10</code> یا <code>9</code>)
+                        </li>
+                        <li class="list-group-item px-0">
+                            <strong>نوع شناسه (اختیاری):</strong> عنوان یا مقدار نوع شناسه (تولید داخل / وارداتی)
+                        </li>
+                        <li class="list-group-item px-0">
+                            <strong>مشمولیت ارزش افزوده:</strong> بله / خیر یا معاف
+                        </li>
+                    </ul>
+
+                    <div class="d-grid mt-3">
+                        <a asp-page="./Index" asp-page-handler="DownloadTemplate" class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-download me-2"></i> دانلود قالب نمونه اکسل آماده
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+}

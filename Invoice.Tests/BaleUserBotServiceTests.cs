@@ -115,6 +115,25 @@ namespace Invoice.Tests
             return null;
         }
 
+        private List<string> GetAllMessageTexts()
+        {
+            var list = new List<string>();
+            foreach (var b in _httpHandler.RequestBodies)
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(b);
+                    if (doc.RootElement.TryGetProperty("text", out var t))
+                    {
+                        var str = t.GetString();
+                        if (!string.IsNullOrEmpty(str)) list.Add(str);
+                    }
+                }
+                catch { }
+            }
+            return list;
+        }
+
         [Fact]
         public async Task ProcessUpdateAsync_StartCommand_SendsWelcomeMessageAndInitializesState()
         {
@@ -637,6 +656,8 @@ namespace Invoice.Tests
             {
                 Name = "شرکت تستی",
                 NationalId = "14009988771",
+                Phone = "09123322110",
+                JobTitle = "مدیر عامل",
                 BaleChatId = chatId,
                 IsPaid = false,
                 FinishDate = null,
@@ -689,6 +710,7 @@ namespace Invoice.Tests
             {
                 Name = "شرکت آوا",
                 Phone = "09121110002",
+                JobTitle = "بازرگانی",
                 NationalId = "14001112233",
                 BaleChatId = "chat_req_2",
                 BaleUsername = "avatest"
@@ -721,6 +743,99 @@ namespace Invoice.Tests
 
             Assert.Equal(3, sentCount);
             Assert.True(_httpHandler.Requests.Count >= 3);
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_ResellerProfileSwitch_ChangesActiveProfile()
+        {
+            var resellerChatId = "554433";
+            var user = new User
+            {
+                Username = "reseller_user",
+                Role = "reseller",
+                BaleChatId = resellerChatId
+            };
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            var prof1 = new Profile { FirstName = "شرکت اول", Lastname = "شعبه ۱", Creator = "reseller_user" };
+            var prof2 = new Profile { FirstName = "شرکت دوم", Lastname = "شعبه ۲", Creator = "reseller_user" };
+            await _context.Profiles.AddRangeAsync(prof1, prof2);
+            await _context.SaveChangesAsync();
+
+            user.ProfileId = prof1.Id;
+            user.Profile = prof1;
+            await _context.SaveChangesAsync();
+
+            var cbUpdate = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_prof_switch"",
+                    ""from"": {{ ""id"": {resellerChatId}, ""username"": ""reseller_user"" }},
+                    ""message"": {{ ""message_id"": 99, ""chat"": {{ ""id"": {resellerChatId} }} }},
+                    ""data"": ""reseller_prof:{prof2.Id}""
+                }}
+            }}");
+
+            await _service.ProcessUpdateAsync(cbUpdate);
+
+            var updatedUser = await _context.Users.FindAsync("reseller_user");
+            Assert.NotNull(updatedUser);
+            Assert.Equal(prof2.Id, updatedUser.ProfileId);
+
+            var allTexts = GetAllMessageTexts();
+            Assert.Contains(allTexts, m => m.Contains("پروفایل فعال با موفقیت تغییر یافت"));
+            Assert.Contains(allTexts, m => m.Contains("شرکت دوم شعبه ۲"));
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_Favorites_AddAndRemoveCallbacks_UpdatesDatabase()
+        {
+            var chatId = "887766";
+            var stuff = new Stuff
+            {
+                Code = "2720000778899",
+                Title = "کالای آزمایشی بله",
+                VatRate = 10,
+                Type = StuffType.شناسه_عمومی_تولید_داخل_کالا
+            };
+            _context.Stuffs.Add(stuff);
+
+            var user = new User
+            {
+                Username = "fav_user_1",
+                Role = "user",
+                BaleChatId = chatId
+            };
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            // 1. افزودن به علاقه‌مندی‌ها با callback
+            var addCb = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_add_fav"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""fav_user_1"" }},
+                    ""message"": {{ ""message_id"": 100, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""fav_add:{stuff.Code}""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(addCb);
+
+            var exists = await _context.UserFavoriteStuffs.AnyAsync(f => f.Username == "fav_user_1" && f.StuffCode == stuff.Code);
+            Assert.True(exists);
+
+            // 2. حذف از علاقه‌مندی‌ها با callback
+            var delCb = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_del_fav"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""fav_user_1"" }},
+                    ""message"": {{ ""message_id"": 101, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""fav_del:{stuff.Code}""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(delCb);
+
+            var existsAfter = await _context.UserFavoriteStuffs.AnyAsync(f => f.Username == "fav_user_1" && f.StuffCode == stuff.Code);
+            Assert.False(existsAfter);
         }
     }
 }

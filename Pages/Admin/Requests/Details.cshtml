@@ -205,6 +205,41 @@
                 </div>
             </div>
 
+            <!-- کلیدهای RSA تولیدشده جهت ثبت در کارپوشه -->
+            <div class="card shadow-sm border-0 mb-3 border-top border-info border-3">
+                <div class="card-header bg-light py-3 d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0 text-info">
+                        <i class="fas fa-shield-alt me-2"></i> کلیدهای امنیتی RSA (کارپوشه مالیاتی)
+                    </h5>
+                    @if (Model.AssociatedProfile != null && !string.IsNullOrWhiteSpace(Model.AssociatedProfile.PrivateKey))
+                    {
+                        <span class="badge bg-success">
+                            <i class="fas fa-check-circle me-1"></i> کلیدها آماده
+                        </span>
+                    }
+                </div>
+                <div class="card-body p-3">
+                    <p class="small text-muted mb-3">
+                        کلیدهای ۲۰۴۸ بیتی استاندارد سامانه مودیان به‌صورت خودکار تولید شده و کلید خصوصی روی پروفایل مودی بارگذاری شده است.
+                    </p>
+                    <div class="d-grid gap-2">
+                        <a asp-page-handler="DownloadPrivateKey" asp-route-id="@Model.KarpooshehRequest.Id" class="btn btn-outline-danger btn-sm text-start">
+                            <i class="fas fa-download me-2"></i> دانلود فایل کلید خصوصی (<code>private_key.pem</code>)
+                        </a>
+                        <a asp-page-handler="DownloadPublicKey" asp-route-id="@Model.KarpooshehRequest.Id" class="btn btn-outline-primary btn-sm text-start">
+                            <i class="fas fa-download me-2"></i> دانلود فایل کلید عمومی (<code>public_key.pem</code> - جهت کارپوشه)
+                        </a>
+                    </div>
+                    @if (Model.AssociatedUser != null)
+                    {
+                        <div class="mt-3 p-2 bg-light rounded small">
+                            <div><span class="text-muted">حساب کاربری مودی:</span> <code class="fw-bold">@Model.AssociatedUser.Username</code></div>
+                            <div><span class="text-muted">رمز اولیه ورود:</span> <code class="fw-bold">123456</code></div>
+                        </div>
+                    }
+                </div>
+            </div>
+
             <!-- فرم تکمیل فرآیند و صدور شناسه یکتا -->
             <div class="card shadow-sm border-0 border-top border-primary border-3">
                 <div class="card-header bg-light py-3">
@@ -257,7 +292,7 @@
                                 <label asp-for="UserPassword" class="form-label fw-bold"></label>
                                 <div class="input-group">
                                     <span class="input-group-text"><i class="fas fa-lock"></i></span>
-                                    <input asp-for="UserPassword" class="form-control font-monospace" placeholder="در صورت خالی بودن شماره همراه قرار می‌گیرد" dir="ltr" />
+                                    <input asp-for="UserPassword" class="form-control font-monospace" placeholder="پیش‌فرض: 123456" dir="ltr" />
                                 </div>
                             </div>
 
