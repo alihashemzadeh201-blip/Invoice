@@ -190,6 +190,8 @@ namespace Invoice.Code
             // دستور بازگشت به منوی اصلی در هر مرحله
             if (string.Equals(text, "/start", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(text, "منوی اصلی", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(text, "🔙 بازگشت به منوی اصلی", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(text, "بازگشت به منوی اصلی", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(text, "/menu", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(text, "انصراف", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(text, "❌ انصراف", StringComparison.OrdinalIgnoreCase) ||
@@ -283,6 +285,7 @@ namespace Invoice.Code
                     "• کیف پول خود را شارژ کرده و اشتراک خود را تمدید فرمایید.\n" +
                     "• فاکتورهای خود را به سامانه مودیان ارسال و یا در صورت نیاز ابطال نمایید.\n\n" +
                     "در صورت بروز هرگونه مشکل یا سوال با پشتیبانی در ارتباط باشید.",
+                    GetBackToMenuInlineKeyboard(),
                     ct: ct);
                 return;
             }
@@ -299,6 +302,7 @@ namespace Invoice.Code
                 await SendUserMessageAsync(chatId,
                     "⚠️ <b>حساب کاربری یا شناسه یکتای مالیاتی شما هنوز فعال نشده است.</b>\n\n" +
                     "جهت صدور یا ابطال صورتحساب، ابتدا باید از طریق دکمه «📝 ثبت‌نام و دریافت شناسه یکتا» اقدام نموده و یا در صورت داشتن حساب از دکمه «🔗 ورود / اتصال به حساب کاربری» استفاده نمایید.",
+                    GetBackToMenuInlineKeyboard(),
                     ct: ct);
                 return;
             }
@@ -315,7 +319,8 @@ namespace Invoice.Code
                         inline_keyboard = new[]
                         {
                             new[] { new { text = "➕ ثبت فاکتور تکی (مرحله‌به‌مرحله)", callback_data = "inv_create_wizard" } },
-                            new[] { new { text = "📥 دریافت نمونه فایل اکسل", callback_data = "inv_download_template" } }
+                            new[] { new { text = "📥 دریافت نمونه فایل اکسل", callback_data = "inv_download_template" } },
+                            new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } }
                         }
                     },
                     ct: ct);
@@ -332,6 +337,7 @@ namespace Invoice.Code
                 {
                     await SendUserMessageAsync(chatId,
                         "ℹ️ در حال حاضر هیچ فاکتور ارسالی موفقی در سوابق شما جهت ابطال یافت نشد.\n\nدر صورتی که شماره مالیاتی ۲۲ رقمی فاکتور را دارید، می‌توانید آن را به صورت دستی ارسال نمایید.",
+                        GetBackToMenuInlineKeyboard(),
                         ct: ct);
                     return;
                 }
@@ -343,6 +349,7 @@ namespace Invoice.Code
                     var label = $"ابطال فاکتور #{inv.Id} ({shortTaxId})";
                     buttons.Add(new[] { new { text = label, callback_data = $"inv_cancel:{inv.Id}" } });
                 }
+                buttons.Add(new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } });
 
                 await SendUserMessageAsync(chatId,
                     "❌ <b>ابطال فاکتور مالیاتی</b>\n\nلطفاً فاکتور مورد نظر جهت ابطال را از لیست زیر انتخاب کنید یا شناسه مالیاتی ۲۲ رقمی آن را در چت ارسال نمایید:",
@@ -357,7 +364,9 @@ namespace Invoice.Code
             if (user == null)
             {
                 await SendUserMessageAsync(chatId,
-                    "⚠️ شما هنوز حسابی در سامانه متصل نکرده‌اید. لطفاً ابتدا ثبت‌نام کرده یا وارد حساب خود شوید.", ct: ct);
+                    "⚠️ شما هنوز حسابی در سامانه متصل نکرده‌اید. لطفاً ابتدا ثبت‌نام کرده یا وارد حساب خود شوید.",
+                    GetBackToMenuInlineKeyboard(),
+                    ct: ct);
                 return;
             }
 
@@ -383,6 +392,10 @@ namespace Invoice.Code
                     {
                         new { text = "💳 ۵,۰۰۰,۰۰۰ ریال", callback_data = "wallet_charge:5000000" },
                         new { text = "💳 ۱۰,۰۰۰,۰۰۰ ریال", callback_data = "wallet_charge:10000000" }
+                    },
+                    new[]
+                    {
+                        new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" }
                     }
                 }
             };
@@ -396,7 +409,9 @@ namespace Invoice.Code
             if (user == null)
             {
                 await SendUserMessageAsync(chatId,
-                    "⚠️ شما هنوز حسابی در سامانه متصل نکرده‌اید. لطفاً ابتدا ثبت‌نام کرده یا وارد حساب خود شوید.", ct: ct);
+                    "⚠️ شما هنوز حسابی در سامانه متصل نکرده‌اید. لطفاً ابتدا ثبت‌نام کرده یا وارد حساب خود شوید.",
+                    GetBackToMenuInlineKeyboard(),
+                    ct: ct);
                 return;
             }
 
@@ -418,6 +433,7 @@ namespace Invoice.Code
                     new { text = $"📦 {p.Title} ({priceStr} ریال)", callback_data = $"sub_renew:{p.Id}" }
                 });
             }
+            buttons.Add(new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } });
 
             await SendUserMessageAsync(chatId, text, new { inline_keyboard = buttons.ToArray() }, ct: ct);
         }
@@ -440,7 +456,7 @@ namespace Invoice.Code
                            $"• موجودی کیف پول: <b>{user.Vallet:N0} ریال</b>\n\n" +
                            $"✅ وضعیت: <b>حساب متصل و آماده صدور صورتحساب</b>";
 
-                await SendUserMessageAsync(chatId, text, ct: ct);
+                await SendUserMessageAsync(chatId, text, GetBackToMenuInlineKeyboard(), ct: ct);
                 return;
             }
 
@@ -468,24 +484,27 @@ namespace Invoice.Code
                            $"• تاریخ ثبت: {reqDate}\n" +
                            $"• وضعیت فعلی: <b>{statusStr}</b>";
 
-                object? markup = null;
+                var buttons = new List<object[]>();
                 if (!request.IsPaid)
                 {
-                    markup = new
-                    {
-                        inline_keyboard = new[]
-                        {
-                            new[] { new { text = "💳 پرداخت هزینه و فعال‌سازی درخواست", callback_data = $"pay_reg:{request.Id}" } }
-                        }
-                    };
+                    buttons.Add(new[] { new { text = "💳 پرداخت هزینه و فعال‌سازی درخواست", callback_data = $"pay_reg:{request.Id}" } });
                 }
+                buttons.Add(new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } });
 
-                await SendUserMessageAsync(chatId, text, markup, ct: ct);
+                await SendUserMessageAsync(chatId, text, new { inline_keyboard = buttons.ToArray() }, ct: ct);
                 return;
             }
 
             await SendUserMessageAsync(chatId,
                 "ℹ️ در حال حاضر هیچ درخواست یا حسابی متصل به این حساب بله ثبت نشده است.\n\nجهت شروع می‌توانید از دکمه «📝 ثبت‌نام و دریافت شناسه یکتا» استفاده نمایید.",
+                new
+                {
+                    inline_keyboard = new[]
+                    {
+                        new[] { new { text = "📝 ثبت‌نام و دریافت شناسه یکتا", callback_data = "reg_start" } },
+                        new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } }
+                    }
+                },
                 ct: ct);
         }
 
@@ -507,7 +526,8 @@ namespace Invoice.Code
                             inline_keyboard = new[]
                             {
                                 new[] { new { text = "💳 پرداخت هزینه ثبت‌نام", callback_data = $"pay_reg:{existingReq.Id}" } },
-                                new[] { new { text = "❌ انصراف و ثبت درخواست جدید", callback_data = $"cancel_reg:{existingReq.Id}" } }
+                                new[] { new { text = "❌ انصراف و ثبت درخواست جدید", callback_data = $"cancel_reg:{existingReq.Id}" } },
+                                new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } }
                             }
                         },
                         ct: ct);
@@ -516,6 +536,7 @@ namespace Invoice.Code
 
                 await SendUserMessageAsync(chatId,
                     $"✅ درخواست شما قبلاً با کد پیگیری #{existingReq.Id} پرداخت و ثبت شده و در نوبت تیم کارشناسی قرار دارد. به محض صدور شناسه یکتا، به شما اطلاع‌رسانی خواهد شد.",
+                    GetBackToMenuInlineKeyboard(),
                     ct: ct);
                 return;
             }
@@ -935,8 +956,9 @@ namespace Invoice.Code
                     userState.CurrentStep = "None";
                     await _context.SaveChangesAsync(ct);
 
+                    resultButtons.Add(new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } });
+
                     await SendUserMessageAsync(chatId, resultSb.ToString(), new { inline_keyboard = resultButtons.ToArray() }, ct: ct);
-                    await ShowMainMenuAsync(chatId, ct);
                     return;
 
                 default:
@@ -1167,6 +1189,30 @@ namespace Invoice.Code
                 return;
             }
 
+            // بازگشت به منوی اصلی
+            if (data == "main_menu")
+            {
+                userState.CurrentStep = "None";
+                userState.StateDataJson = null;
+                await _context.SaveChangesAsync(ct);
+                await ShowMainMenuAsync(chatId, ct);
+                return;
+            }
+
+            // نمایش منوی علاقه‌مندی‌ها
+            if (data == "fav_menu")
+            {
+                await ShowFavoritesMenuAsync(chatId, ct);
+                return;
+            }
+
+            // شروع فرآیند ثبت‌نام
+            if (data == "reg_start")
+            {
+                await StartRegistrationFlowAsync(chatId, userState, ct);
+                return;
+            }
+
             // انتخاب پروفایل فعال توسط نماینده (Reseller)
             if (data.StartsWith("reseller_prof:"))
             {
@@ -1188,9 +1234,8 @@ namespace Invoice.Code
                                 $"🔑 <b>شناسه یکتای حافظه مالیاتی:</b> <code>{targetProf.MemoryId ?? "-"}</code>\n" +
                                 $"🆔 <b>کد اقتصادی / ملی:</b> <code>{targetProf.TinCode ?? "-"}</code>\n\n" +
                                 $"از این پس کلیه فاکتورهای جدید ارسالی با این مشخصات صادر و امضا خواهند شد.",
+                                replyMarkup: GetMainUserReplyKeyboard(true, isReseller: true),
                                 ct: ct);
-
-                            await ShowMainMenuAsync(chatId, ct);
                             return;
                         }
                     }
@@ -1234,8 +1279,17 @@ namespace Invoice.Code
 
                     var stuff = await _context.Stuffs.FindAsync(new object[] { code }, ct);
                     var title = stuff?.Title ?? code;
+                    var favAddMarkup = new
+                    {
+                        inline_keyboard = new[]
+                        {
+                            new[] { new { text = "⭐ مشاهده لیست منتخب‌ها", callback_data = "fav_menu" } },
+                            new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } }
+                        }
+                    };
                     await SendUserMessageAsync(chatId,
                         $"⭐ کالا با شناسه <code>{code}</code> («<b>{HtmlSafe(title)}</b>») با موفقیت به لیست کالاهای منتخب شما اضافه شد.",
+                        replyMarkup: favAddMarkup,
                         ct: ct);
                     return;
                 }
@@ -1255,8 +1309,17 @@ namespace Invoice.Code
                         await _context.SaveChangesAsync(ct);
                     }
 
+                    var favDelMarkup = new
+                    {
+                        inline_keyboard = new[]
+                        {
+                            new[] { new { text = "⭐ مشاهده لیست منتخب‌ها", callback_data = "fav_menu" } },
+                            new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } }
+                        }
+                    };
                     await SendUserMessageAsync(chatId,
                         $"❌ شناسه کالا <code>{code}</code> از لیست علاقه‌مندی‌های شما حذف گردید.",
+                        replyMarkup: favDelMarkup,
                         ct: ct);
                     return;
                 }
@@ -1893,6 +1956,7 @@ namespace Invoice.Code
             {
                 await SendUserMessageAsync(chatId,
                     "⚠️ این بخش اختصاصی کاربران با نقش «نماینده» (Reseller) می‌باشد.",
+                    GetBackToMenuInlineKeyboard(),
                     ct: ct);
                 return;
             }
@@ -1907,6 +1971,7 @@ namespace Invoice.Code
             {
                 await SendUserMessageAsync(chatId,
                     "⚠️ در حال حاضر هیچ پروفایلی تحت مدیریت حساب نمایندگی شما یافت نشد.\nپروفایل‌های ثبت‌شده در وب به صورت خودکار در این لیست نمایش داده خواهند شد.",
+                    GetBackToMenuInlineKeyboard(),
                     ct: ct);
                 return;
             }
@@ -1921,6 +1986,8 @@ namespace Invoice.Code
                 var cbData = isActive ? "noop" : $"reseller_prof:{p.Id}";
                 buttons.Add(new[] { new { text = label, callback_data = cbData } });
             }
+
+            buttons.Add(new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } });
 
             var currentName = user.Profile != null ? user.Profile.DisplayName : "انتخاب نشده";
             var currentMem = user.Profile?.MemoryId ?? "-";
@@ -1943,6 +2010,7 @@ namespace Invoice.Code
             {
                 await SendUserMessageAsync(chatId,
                     "⚠️ شما هنوز حسابی در سامانه متصل نکرده‌اید. لطفاً ابتدا ثبت‌نام کرده یا وارد حساب خود شوید.",
+                    GetBackToMenuInlineKeyboard(),
                     ct: ct);
                 return;
             }
@@ -1993,7 +2061,20 @@ namespace Invoice.Code
                 }
             }
 
+            inlineButtons.Add(new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } });
+
             await SendUserMessageAsync(chatId, sb.ToString(), new { inline_keyboard = inlineButtons.ToArray() }, ct: ct);
+        }
+
+        private static object GetBackToMenuInlineKeyboard()
+        {
+            return new
+            {
+                inline_keyboard = new[]
+                {
+                    new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } }
+                }
+            };
         }
 
         private static object GetCancelReplyKeyboard()

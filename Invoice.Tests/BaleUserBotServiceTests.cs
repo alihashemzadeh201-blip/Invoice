@@ -785,6 +785,93 @@ namespace Invoice.Tests
             var allTexts = GetAllMessageTexts();
             Assert.Contains(allTexts, m => m.Contains("پروفایل فعال با موفقیت تغییر یافت"));
             Assert.Contains(allTexts, m => m.Contains("شرکت دوم شعبه ۲"));
+            // اطمینان از عدم ارسال پیام خوش‌آمدگویی پس از انتخاب پروفایل فعال
+            Assert.DoesNotContain(allTexts, m => m.Contains("خوش آمدید"));
+
+            // اطمینان از الصاق مستقیم کیبورد اصلی نمایندگی به همان پیام تایید تغییر
+            using var lastDoc = JsonDocument.Parse(_httpHandler.RequestBodies[^1]);
+            Assert.True(lastDoc.RootElement.TryGetProperty("reply_markup", out var replyMarkup));
+            Assert.True(replyMarkup.TryGetProperty("keyboard", out var kb));
+            var buttonTexts = new List<string>();
+            foreach (var row in kb.EnumerateArray())
+            {
+                foreach (var btn in row.EnumerateArray())
+                {
+                    if (btn.TryGetProperty("text", out var tProp))
+                    {
+                        buttonTexts.Add(tProp.GetString() ?? "");
+                    }
+                }
+            }
+            Assert.Contains(buttonTexts, t => t.Contains("مدیریت و انتخاب پروفایل فعال"));
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_CallbackMainMenu_ResetsStateAndShowsMainMenu()
+        {
+            var chatId = "11223344";
+            var state = new BaleUserState
+            {
+                ChatId = chatId,
+                CurrentStep = "Favorite_Search",
+                StateDataJson = "{\"term\":\"test\"}",
+                LastUpdated = DateTime.Now
+            };
+            _context.BaleUserStates.Add(state);
+            await _context.SaveChangesAsync();
+
+            var cbUpdate = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_main_menu"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""menu_user"" }},
+                    ""message"": {{ ""message_id"": 105, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""main_menu""
+                }}
+            }}");
+
+            await _service.ProcessUpdateAsync(cbUpdate);
+
+            var updatedState = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(updatedState);
+            Assert.Equal("None", updatedState.CurrentStep);
+            Assert.Null(updatedState.StateDataJson);
+
+            var allTexts = GetAllMessageTexts();
+            Assert.Contains(allTexts, m => m.Contains("خوش آمدید"));
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_TextBackToMainMenu_ResetsStateAndShowsMainMenu()
+        {
+            var chatId = "22334455";
+            var state = new BaleUserState
+            {
+                ChatId = chatId,
+                CurrentStep = "Login_Password",
+                StateDataJson = "{\"username\":\"someuser\"}",
+                LastUpdated = DateTime.Now
+            };
+            _context.BaleUserStates.Add(state);
+            await _context.SaveChangesAsync();
+
+            var msgUpdate = ParseJson($@"{{
+                ""message"": {{
+                    ""message_id"": 106,
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""back_user"" }},
+                    ""chat"": {{ ""id"": {chatId} }},
+                    ""text"": ""🔙 بازگشت به منوی اصلی""
+                }}
+            }}");
+
+            await _service.ProcessUpdateAsync(msgUpdate);
+
+            var updatedState = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(updatedState);
+            Assert.Equal("None", updatedState.CurrentStep);
+            Assert.Null(updatedState.StateDataJson);
+
+            var allTexts = GetAllMessageTexts();
+            Assert.Contains(allTexts, m => m.Contains("خوش آمدید"));
         }
 
         [Fact]
