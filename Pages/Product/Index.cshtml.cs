@@ -23,14 +23,9 @@ namespace Invoice.Pages_Product
 
         public IList<Product> Product { get;set; } = default!;
 
-        public async Task OnGetAsync()
+        public IActionResult OnGet()
         {
-            
-            Search = Search ?? "";
-            if (_context.Products != null)
-            {
-                Product = await _context.Products.Include(p=>p.MeasureUnit).Where(p=>p.Creator==User.Identity.Name ).ToListAsync();
-            }
+            return RedirectToPage("/Stuff/Index");
         }
         public async Task OnPostAsync()
         {

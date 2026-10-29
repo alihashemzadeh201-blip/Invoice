@@ -160,9 +160,85 @@ namespace Invoices.Pages.InvoiceManage
 
         public async Task<IActionResult> OnGetGetProductsAsync(string search)
         {
-            search = search ?? "";
-            var products = await _context.Products.Where(p =>(p.Creator==User.Identity.Name || p.Creator==null) && ( p.Sstt.Contains(search) || p.Sstid.Contains(search))).Take(20).ToListAsync();
-            return new JsonResult(products);
+            var username = User.Identity?.Name;
+            if (string.IsNullOrWhiteSpace(username))
+                return new JsonResult(new List<object>());
+
+            search = (search ?? "").Trim();
+
+            // فیلتر اختصاصی بر اساس کالاهای منتخب کاربر (UserFavoriteStuffs)
+            var favQuery = _context.UserFavoriteStuffs
+                .Include(f => f.Stuff)
+                .Where(f => f.Username == username)
+                .AsNoTracking();
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                favQuery = favQuery.Where(f =>
+                    f.StuffCode.Contains(search) ||
+                    (f.Stuff != null && f.Stuff.Title.Contains(search)));
+            }
+
+            var favorites = await favQuery
+                .OrderByDescending(f => f.AddedDate)
+                .Take(50)
+                .ToListAsync();
+
+            // استخراج کدهای منتخب جهت یافتن پیش‌فرض‌های احتمالی کاربر در Products (فی و واحد سنجش)
+            var favoriteCodes = favorites.Select(f => f.StuffCode).ToList();
+            var userProducts = await _context.Products
+                .Where(p => p.Creator == username && favoriteCodes.Contains(p.Sstid))
+                .AsNoTracking()
+                .ToDictionaryAsync(p => p.Sstid, p => p, StringComparer.OrdinalIgnoreCase);
+
+            var result = favorites.Select(f =>
+            {
+                var code = f.StuffCode;
+                var stuff = f.Stuff;
+                userProducts.TryGetValue(code, out var prod);
+
+                var title = stuff?.Title ?? prod?.Sstt ?? code;
+                var stuffType = stuff != null
+                    ? stuff.Type.ToString().Replace("_", " ")
+                    : (prod?.StuffType.ToString().Replace("_", " ") ?? "");
+
+                // تعیین نرخ مالیات (به صورت انوم یا مقدار عددی درصد)
+                VatRate vra = VatRate.درصد_10;
+                int vatPercent = 10;
+                if (stuff != null)
+                {
+                    vatPercent = stuff.VatRate;
+                    if (stuff.VatRate == 0 || !stuff.VatTax)
+                        vra = VatRate.معاف;
+                    else if (stuff.VatRate == 9)
+                        vra = VatRate.درصد_9;
+                    else if (stuff.VatRate == 10)
+                        vra = VatRate.درصد_10;
+                    else if (stuff.VatRate == 16)
+                        vra = VatRate.درصد_16;
+                    else if (Enum.IsDefined(typeof(VatRate), stuff.VatRate))
+                        vra = (VatRate)stuff.VatRate;
+                }
+                else if (prod != null)
+                {
+                    vra = prod.Vra;
+                    vatPercent = (int)prod.Vra;
+                }
+
+                return new
+                {
+                    id = prod?.Id ?? 0,
+                    sstid = code,
+                    sstt = title,
+                    title = $"{title} -- {stuffType} -- {code}",
+                    vra = (int)vra,
+                    vatRatePercent = vatPercent,
+                    mu = prod?.Mu ?? "",
+                    fee = prod?.Fee ?? 0
+                };
+            }).ToList();
+
+            return new JsonResult(result);
         }
 
 

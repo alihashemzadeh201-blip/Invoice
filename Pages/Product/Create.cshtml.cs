@@ -25,6 +25,10 @@ namespace Invoice.Pages_Product
 
         public async Task<IActionResult>  OnGetAsync()
         {
+            if (Id == null)
+            {
+                return RedirectToPage("/Stuff/Index");
+            }
             if(Id!=null)
             {
                 Product = await _context.Products.FindAsync(Id);

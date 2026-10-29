@@ -299,6 +299,17 @@ table .btn{
 
 .product-search-wrap {
     position: relative;
+    z-index: 1051;
+}
+
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1050;
+    background: transparent;
 }
 .btn-outline-info {
     color: #01748b;

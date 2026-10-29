@@ -23,14 +23,49 @@
         <input type="hidden" asp-for="InvoiceId" />
         <div class="row">
             <div class="mb-3">
-                <label asp-for="InvoiceItem.Sstt" class="form-label"></label>
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label asp-for="InvoiceItem.Sstt" class="form-label mb-0 fw-bold">
+                        <i class="fas fa-star text-warning me-1"></i> شرح کالا/خدمت (انتخاب از کالاهای منتخب)
+                    </label>
+                    <a href="/Stuff/Index" target="_blank" class="small text-decoration-none">
+                        <i class="fas fa-external-link-alt me-1"></i> مدیریت کالاهای منتخب
+                    </a>
+                </div>
                 <div class="product-search-wrap">
-                    <input asp-for="InvoiceItem.Sstt" class="form-control" ng-model="selected.sstt" ng-change="sstt_change()" autocomplete="off" ng-focus="sstt_change()" onclick="this.select()" />
-                    <div class="auto-complete" ng-show="auto_complete">
-                        <div ng-repeat="item in list" class="auto-complete-item" ng-click="item_click(item)">{{item.title}}</div>
+                    <div class="input-group">
+                        <input asp-for="InvoiceItem.Sstt" class="form-control" ng-model="selected.sstt" ng-change="sstt_change()" autocomplete="off" ng-focus="sstt_change()" onclick="this.select()" placeholder="انتخاب یا جستجو در کالاهای منتخب..." />
+                        <button class="btn btn-outline-secondary" type="button" ng-click="toggle_dropdown()" title="نمایش لیست کالاهای منتخب">
+                            <i class="fas" ng-class="{'fa-chevron-up': auto_complete, 'fa-chevron-down': !auto_complete}"></i>
+                        </button>
+                    </div>
+                    <div class="auto-complete shadow-lg" ng-show="auto_complete">
+                        <div class="p-2 border-bottom bg-light text-muted small d-flex justify-content-between align-items-center">
+                            <span><i class="fas fa-star text-warning me-1"></i> کالاهای منتخب شما</span>
+                            <span class="badge bg-secondary-subtle text-secondary" ng-if="list.length > 0">{{list.length}} مورد</span>
+                        </div>
+                        <div ng-if="list.length > 0">
+                            <div ng-repeat="item in list" class="auto-complete-item d-flex justify-content-between align-items-center" ng-click="item_click(item)">
+                                <div class="text-truncate me-2">
+                                    <div class="fw-bold text-dark">{{item.sstt}}</div>
+                                    <small class="text-muted font-monospace" dir="ltr"><i class="fas fa-barcode me-1"></i>{{item.sstid}}</small>
+                                </div>
+                                <div class="text-end text-nowrap">
+                                    <span class="badge bg-light text-dark border">مالیات: {{item.vatRatePercent}}%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div ng-if="list && list.length === 0" class="p-3 text-center text-muted small">
+                            <i class="fas fa-box-open fa-2x d-block mb-2 text-secondary"></i>
+                            هیچ کالایی در لیست کالاهای منتخب شما یافت نشد.
+                            <div class="mt-2">
+                                <a href="/Stuff/Index" target="_blank" class="btn btn-outline-primary btn-sm">
+                                    <i class="fas fa-plus me-1"></i> افزودن کالا به منتخب‌ها
+                                </a>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <span asp-validation-for="InvoiceItem.Sstt" class="text-danger"></span>
+                <span asp-validation-for="InvoiceItem.Sstt" class="text-danger small"></span>
 
             </div>
             <div class="mb-3">
@@ -399,17 +434,20 @@
             }
          
        
-            $scope.sstt_change = function () {
-                var search = $scope.selected == null ? "" : $scope.selected.sstt;
-                $http.get('/invoicemanage/invoiceitems?handler=getproducts&search=' + search).then(function (response) {
-                    $scope.list = response.data;
-                    if ($scope.list.length > 0)
-                        $scope.auto_complete = true;
-                    else
-                        $scope.auto_complete = false;
+            $scope.toggle_dropdown = function () {
+                $scope.auto_complete = !$scope.auto_complete;
+                if ($scope.auto_complete) {
+                    $scope.sstt_change();
+                }
+            };
 
+            $scope.sstt_change = function () {
+                var search = ($scope.selected && $scope.selected.sstt) ? $scope.selected.sstt : "";
+                $http.get('/invoicemanage/invoiceitems?handler=getproducts&search=' + encodeURIComponent(search)).then(function (response) {
+                    $scope.list = response.data || [];
+                    $scope.auto_complete = true;
                 });
-            }
+            };
             $scope.item_click = function (item) {
                 $scope.selected = item;
                 $scope.updateRialValue();

@@ -1,0 +1,166 @@
+@model Invoice.Pages.StuffPages.IndexModel
+
+<div id="tableDataHolder"
+     data-tab="@Model.Tab"
+     data-favorites-count="@Model.FavoritesCount"
+     data-total-count="@Model.TotalCount"
+     data-page-number="@Model.PageNumber"
+     data-total-pages="@Model.TotalPages">
+</div>
+
+<div class="card shadow-sm border-0">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0" id="stuffTable">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 45px;" class="text-center" title="علاقه‌مندی / انتخاب">⭐</th>
+                        <th style="width: 170px;">شناسه کالا/خدمت</th>
+                        <th>شرح کالا/خدمت</th>
+                        <th style="width: 100px;" class="text-center">نرخ مالیات</th>
+                        <th style="width: 130px;" class="text-center">واحد سنجش</th>
+                        <th style="width: 150px;" class="text-center">مبلغ واحد (فی)</th>
+                        <th style="width: 150px;" class="text-center">عملیات</th>
+                    </tr>
+                </thead>
+                <tbody id="stuffTableBody">
+                    @if (!Model.Items.Any())
+                    {
+                        <tr id="emptyRow">
+                            <td colspan="7" class="text-center py-5 text-muted">
+                                <i class="fas fa-box-open fa-3x mb-3 text-secondary d-block"></i>
+                                @if (Model.Tab == "fav")
+                                {
+                                    <span>لیست کالاهای منتخب شما خالی است. با مراجعه به تب «جستجو در کل شناسه‌ها» می‌توانید کالاهای پرمصرف خود را انتخاب و قیمت‌گذاری کنید.</span>
+                                }
+                                else
+                                {
+                                    <span>هیچ موردی با مشخصات جستجو شده یافت نشد.</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var item in Model.Items)
+                        {
+                            <tr data-code="@item.Code" class="stuff-row" id="row-@item.Code">
+                                <td class="text-center">
+                                    <form method="post" asp-page-handler="ToggleFavorite" class="d-inline form-toggle-favorite">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="code" value="@item.Code" />
+                                        <input type="hidden" name="returnTab" value="@Model.Tab" />
+                                        <input type="hidden" name="search" value="@Model.Search" />
+                                        <input type="hidden" name="pageNumber" value="@Model.PageNumber" />
+                                        <button type="button" class="btn btn-link p-0 text-decoration-none shadow-none btn-toggle-favorite" data-code="@item.Code" data-fav="@(item.IsFavorite ? "true" : "false")" title="@(item.IsFavorite ? "حذف از منتخب‌ها" : "افزودن به منتخب‌ها")">
+                                            @if (item.IsFavorite)
+                                            {
+                                                <i class="fas fa-star text-warning fa-lg star-icon"></i>
+                                            }
+                                            else
+                                            {
+                                                <i class="far fa-star text-muted fa-lg star-icon"></i>
+                                            }
+                                        </button>
+                                    </form>
+                                </td>
+                                <td>
+                                    <code class="fw-bold text-dark font-monospace" dir="ltr">@item.Code</code>
+                                </td>
+                                <td>
+                                    <span class="fw-semibold item-title">@item.Title</span>
+                                    <div class="small text-muted mt-1">
+                                        <span class="badge bg-light text-secondary border">@item.Type.ToString().Replace("_", " ")</span>
+                                        @if (item.VatTax)
+                                        {
+                                            <span class="badge bg-success-subtle text-success">مشمول</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary-subtle text-secondary">معاف</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td class="text-center">
+                                    <span class="badge bg-light text-dark border">@item.VatRate %</span>
+                                </td>
+                                <td class="text-center cell-mu">
+                                    @if (!string.IsNullOrWhiteSpace(item.MeasureUnitTitle))
+                                    {
+                                        <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle py-1 px-2 mu-badge" title="کد واحد: @item.Mu">
+                                            <i class="fas fa-balance-scale me-1 small"></i><span class="mu-text">@item.MeasureUnitTitle</span>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small mu-empty">تعیین‌نشده</span>
+                                    }
+                                </td>
+                                <td class="text-center cell-fee">
+                                    @if (item.Fee.HasValue && item.Fee > 0)
+                                    {
+                                        <span class="fw-bold text-dark font-monospace fee-text" dir="ltr">@item.Fee.Value.ToString("N0") <small class="text-muted fw-normal">ریال</small></span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small fee-empty">۰ ریال</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    <button type="button"
+                                            class="btn btn-outline-primary btn-sm btn-edit-product"
+                                            data-code="@item.Code"
+                                            data-title="@item.Title"
+                                            data-fee="@(item.Fee ?? 0)"
+                                            data-mu="@(item.Mu ?? "")"
+                                            data-vat="@item.VatRate"
+                                            title="تنظیم یا ویرایش قیمت واحد و واحد سنجش">
+                                        <i class="fas fa-pencil-alt me-1"></i> تنظیم قیمت/واحد
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @if (Model.TotalPages > 1)
+    {
+        <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2 flex-wrap gap-2">
+            <span class="text-muted small">
+                صفحه @Model.PageNumber از @Model.TotalPages (نمایش @Model.Items.Count از @Model.TotalCount.ToString("N0") مورد)
+            </span>
+            <nav aria-label="Stuff Pagination">
+                <ul class="pagination pagination-sm mb-0">
+                    @if (Model.PageNumber > 1)
+                    {
+                        <li class="page-item">
+                            <a class="page-link ajax-page-link" href="#" data-page="@(Model.PageNumber - 1)">قبلی</a>
+                        </li>
+                    }
+
+                    @{
+                        var startPage = Math.Max(1, Model.PageNumber - 2);
+                        var endPage = Math.Min(Model.TotalPages, Model.PageNumber + 2);
+                    }
+
+                    @for (var p = startPage; p <= endPage; p++)
+                    {
+                        <li class="page-item @(p == Model.PageNumber ? "active" : "")">
+                            <a class="page-link ajax-page-link" href="#" data-page="@p">@p</a>
+                        </li>
+                    }
+
+                    @if (Model.PageNumber < Model.TotalPages)
+                    {
+                        <li class="page-item">
+                            <a class="page-link ajax-page-link" href="#" data-page="@(Model.PageNumber + 1)">بعدی</a>
+                        </li>
+                    }
+                </ul>
+            </nav>
+        </div>
+    }
+</div>

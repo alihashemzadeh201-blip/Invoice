@@ -28,12 +28,26 @@ public class ExcelHelp
             foreach (Row row in sheetData.Elements<Row>())
             {
                 ExcelRow tempRow = new ExcelRow();
-                int columnIndex = 0;
+                int currentColIndex = 0;
                 foreach (Cell cell in row.Elements<Cell>())
                 {
-                    // Get cell value and add it to the DataTable
-                    tempRow.Cells.Add(GetCellValue(cell, workbookPart));
-                    columnIndex++;
+                    int cellColIndex = GetColumnIndex(cell.CellReference?.Value);
+                    if (cellColIndex >= 0)
+                    {
+                        // پر کردن سلول‌های خالی جا افتاده قبل از سلول فعلی
+                        while (currentColIndex < cellColIndex)
+                        {
+                            tempRow.Cells.Add(string.Empty);
+                            currentColIndex++;
+                        }
+                        tempRow.Cells.Add(GetCellValue(cell, workbookPart));
+                        currentColIndex = cellColIndex + 1;
+                    }
+                    else
+                    {
+                        tempRow.Cells.Add(GetCellValue(cell, workbookPart));
+                        currentColIndex++;
+                    }
                 }
                 if (firstRow)
                 {
@@ -41,23 +55,55 @@ public class ExcelHelp
                     doc.ColumnHeaders.AddRange(tempRow.Cells);
                 }
                 else
+                {
+                    // تکمیل تعداد سلول‌های ردیف تا انتهای ستون‌ها در صورت خالی بودن سلول‌های پایانی
+                    while (doc.ColumnHeaders != null && tempRow.Cells.Count < doc.ColumnHeaders.Count)
+                    {
+                        tempRow.Cells.Add(string.Empty);
+                    }
                     doc.Rows.Add(tempRow);
+                }
             }
         }
 
         return doc;
     }
+
+    public static int GetColumnIndex(string? cellReference)
+    {
+        if (string.IsNullOrEmpty(cellReference)) return -1;
+        int col = 0;
+        for (int i = 0; i < cellReference.Length; i++)
+        {
+            char c = cellReference[i];
+            if (char.IsLetter(c))
+            {
+                col = col * 26 + (char.ToUpperInvariant(c) - 'A' + 1);
+            }
+            else
+            {
+                break;
+            }
+        }
+        return col > 0 ? col - 1 : -1;
+    }
+
     private static string GetCellValue(Cell cell, WorkbookPart workbookPart)
     {
         string value = cell.InnerText;
 
         if (cell.DataType != null && cell.DataType.Value == CellValues.SharedString)
         {
-            return workbookPart.SharedStringTablePart.SharedStringTable.ChildElements[Int32.Parse(value)].InnerText;
+            if (int.TryParse(value, out int sstIndex) && workbookPart.SharedStringTablePart?.SharedStringTable != null)
+            {
+                var element = workbookPart.SharedStringTablePart.SharedStringTable.ChildElements.ElementAtOrDefault(sstIndex);
+                return element?.InnerText ?? string.Empty;
+            }
+            return value;
         }
         else
         {
-            return value;
+            return value ?? string.Empty;
         }
     }
     public static void Save(ExcelDoc doc, string path)

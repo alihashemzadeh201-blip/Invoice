@@ -40,10 +40,16 @@ namespace Invoice.Pages.StuffPages
             public bool Special { get; set; }
             public bool IsFavorite { get; set; }
             public bool IsInProducts { get; set; }
+            public int? ProductId { get; set; }
+            public decimal? Fee { get; set; }
+            public string? Mu { get; set; }
+            public string? MeasureUnitTitle { get; set; }
+            public string? CustomTitle { get; set; }
             public DateTime? AddedDate { get; set; }
         }
 
         public List<StuffItemViewModel> Items { get; set; } = new();
+        public List<MeasureUnit> MeasureUnits { get; set; } = new();
 
         [BindProperty(SupportsGet = true)]
         public string? Search { get; set; }
@@ -85,12 +91,17 @@ namespace Invoice.Pages.StuffPages
                 .Where(f => f.Username == username)
                 .ToDictionaryAsync(f => f.StuffCode, f => f.AddedDate, StringComparer.OrdinalIgnoreCase);
 
-            var existingProductCodes = await _context.Products
+            var userProducts = await _context.Products
+                .Include(p => p.MeasureUnit)
                 .Where(p => p.Creator == username)
-                .Select(p => p.Sstid)
-                .Distinct()
+                .AsNoTracking()
+                .ToDictionaryAsync(p => p.Sstid, p => p, StringComparer.OrdinalIgnoreCase);
+
+            MeasureUnits = await _context.MeasureUnits
+                .AsNoTracking()
+                .OrderBy(m => m.Order ?? 999)
+                .ThenBy(m => m.Title)
                 .ToListAsync();
-            var productCodesSet = new HashSet<string>(existingProductCodes, StringComparer.OrdinalIgnoreCase);
 
             if (Tab == "fav")
             {
@@ -114,17 +125,31 @@ namespace Invoice.Pages.StuffPages
                     .Take(PageSize)
                     .ToListAsync();
 
-                Items = favItems.Select(f => new StuffItemViewModel
+                Items = favItems.Select(f =>
                 {
-                    Code = f.StuffCode,
-                    Title = f.Stuff?.Title ?? "بدون شرح",
-                    VatRate = f.Stuff?.VatRate ?? 0,
-                    Type = f.Stuff?.Type ?? StuffType.شناسه_عمومی_تولید_داخل_کالا,
-                    VatTax = f.Stuff?.VatTax ?? true,
-                    Special = f.Stuff?.Special ?? false,
-                    IsFavorite = true,
-                    IsInProducts = productCodesSet.Contains(f.StuffCode),
-                    AddedDate = f.AddedDate
+                    userProducts.TryGetValue(f.StuffCode, out var prod);
+                    var title = prod?.Sstt ?? f.Stuff?.Title ?? "بدون شرح";
+                    var vatRate = f.Stuff?.VatRate ?? (prod != null ? (int)prod.Vra : 0);
+                    var type = f.Stuff?.Type ?? prod?.StuffType ?? StuffType.شناسه_عمومی_تولید_داخل_کالا;
+                    var vatTax = f.Stuff?.VatTax ?? true;
+
+                    return new StuffItemViewModel
+                    {
+                        Code = f.StuffCode,
+                        Title = title,
+                        VatRate = vatRate,
+                        Type = type,
+                        VatTax = vatTax,
+                        Special = f.Stuff?.Special ?? false,
+                        IsFavorite = true,
+                        IsInProducts = prod != null,
+                        ProductId = prod?.Id,
+                        Fee = prod?.Fee,
+                        Mu = prod?.Mu,
+                        MeasureUnitTitle = prod?.MeasureUnit?.Title,
+                        CustomTitle = prod?.Sstt,
+                        AddedDate = f.AddedDate
+                    };
                 }).ToList();
             }
             else
@@ -145,21 +170,54 @@ namespace Invoice.Pages.StuffPages
                     .Take(PageSize)
                     .ToListAsync();
 
-                Items = stuffs.Select(s => new StuffItemViewModel
+                Items = stuffs.Select(s =>
                 {
-                    Code = s.Code,
-                    Title = s.Title,
-                    VatRate = s.VatRate,
-                    Type = s.Type,
-                    VatTax = s.VatTax,
-                    Special = s.Special,
-                    IsFavorite = favoriteCodes.ContainsKey(s.Code),
-                    IsInProducts = productCodesSet.Contains(s.Code),
-                    AddedDate = favoriteCodes.TryGetValue(s.Code, out var dt) ? dt : null
+                    userProducts.TryGetValue(s.Code, out var prod);
+                    var title = prod?.Sstt ?? s.Title;
+
+                    return new StuffItemViewModel
+                    {
+                        Code = s.Code,
+                        Title = title,
+                        VatRate = s.VatRate,
+                        Type = s.Type,
+                        VatTax = s.VatTax,
+                        Special = s.Special,
+                        IsFavorite = favoriteCodes.ContainsKey(s.Code),
+                        IsInProducts = prod != null,
+                        ProductId = prod?.Id,
+                        Fee = prod?.Fee,
+                        Mu = prod?.Mu,
+                        MeasureUnitTitle = prod?.MeasureUnit?.Title,
+                        CustomTitle = prod?.Sstt,
+                        AddedDate = favoriteCodes.TryGetValue(s.Code, out var dt) ? dt : null
+                    };
                 }).ToList();
             }
 
+            if (IsAjaxRequest())
+            {
+                var viewData = ViewData ?? new Microsoft.AspNetCore.Mvc.ViewFeatures.ViewDataDictionary<IndexModel>(
+                    new Microsoft.AspNetCore.Mvc.ModelBinding.EmptyModelMetadataProvider(),
+                    new Microsoft.AspNetCore.Mvc.ModelBinding.ModelStateDictionary());
+                viewData.Model = this;
+
+                return new PartialViewResult
+                {
+                    ViewName = "_StuffTablePartial",
+                    ViewData = viewData
+                };
+            }
+
             return Page();
+        }
+
+        private bool IsAjaxRequest()
+        {
+            return Request.Headers["X-Requested-With"] == "XMLHttpRequest" ||
+                   Request.Headers.Accept.Any(a => a != null && a.Contains("application/json")) ||
+                   Request.Query.ContainsKey("ajax") ||
+                   Request.Query.ContainsKey("handler");
         }
 
         public async Task<IActionResult> OnPostToggleFavoriteAsync(string code, string? returnTab, string? search, int pageNumber = 1)
@@ -167,23 +225,30 @@ namespace Invoice.Pages.StuffPages
             var username = User.Identity?.Name;
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(code))
             {
+                if (IsAjaxRequest())
+                {
+                    return new JsonResult(new { success = false, message = "کاربر یا کد شناسه نامعتبر است." });
+                }
                 return RedirectToPage(new { Tab = returnTab ?? "fav", Search = search, PageNumber = pageNumber });
             }
 
             var existing = await _context.UserFavoriteStuffs
                 .FirstOrDefaultAsync(f => f.Username == username && f.StuffCode == code);
 
+            bool isFavorite;
+            string message;
             if (existing != null)
             {
                 _context.UserFavoriteStuffs.Remove(existing);
                 await _context.SaveChangesAsync();
-                SuccessMessage = $"شناسه {code} از لیست علاقه‌مندی‌ها حذف شد.";
+                isFavorite = false;
+                message = $"شناسه {code} از لیست منتخب‌ها حذف شد.";
             }
             else
             {
                 // بررسی وجود شناسه در کالاها
-                var stuffExists = await _context.Stuffs.AnyAsync(s => s.Code == code);
-                if (stuffExists)
+                var stuff = await _context.Stuffs.FindAsync(code);
+                if (stuff != null)
                 {
                     _context.UserFavoriteStuffs.Add(new UserFavoriteStuff
                     {
@@ -191,16 +256,153 @@ namespace Invoice.Pages.StuffPages
                         StuffCode = code,
                         AddedDate = DateTime.Now
                     });
+
+                    // ایجاد یا اطمینان از وجود محصول جهت ذخیره قیمت و واحد سنجش
+                    var existingProd = await _context.Products.FirstOrDefaultAsync(p => p.Creator == username && p.Sstid == code);
+                    if (existingProd == null)
+                    {
+                        VatRate vra = VatRate.درصد_10;
+                        if (stuff.VatRate == 0 || !stuff.VatTax) vra = VatRate.معاف;
+                        else if (stuff.VatRate == 9) vra = VatRate.درصد_9;
+                        else if (stuff.VatRate == 10) vra = VatRate.درصد_10;
+                        else if (stuff.VatRate == 16) vra = VatRate.درصد_16;
+
+                        _context.Products.Add(new Product
+                        {
+                            Sstid = stuff.Code,
+                            Sstt = stuff.Title,
+                            StuffType = stuff.Type,
+                            Vra = vra,
+                            Creator = username,
+                            Fee = 0,
+                            Mu = null
+                        });
+                    }
+
                     await _context.SaveChangesAsync();
-                    SuccessMessage = $"شناسه {code} با موفقیت به لیست علاقه‌مندی‌ها افزوده شد.";
+                    isFavorite = true;
+                    message = $"شناسه {code} با موفقیت به لیست منتخب‌ها افزوده شد.";
                 }
                 else
                 {
+                    if (IsAjaxRequest())
+                    {
+                        return new JsonResult(new { success = false, message = "شناسه کالای مورد نظر در بانک اطلاعاتی یافت نشد." });
+                    }
                     ErrorMessage = "شناسه کالای مورد نظر در بانک اطلاعاتی یافت نشد.";
+                    return RedirectToPage(new { Tab = returnTab ?? "fav", Search = search, PageNumber = pageNumber });
                 }
             }
 
+            var favCount = await _context.UserFavoriteStuffs.CountAsync(f => f.Username == username);
+
+            if (IsAjaxRequest())
+            {
+                var prod = await _context.Products.Include(p => p.MeasureUnit).FirstOrDefaultAsync(p => p.Creator == username && p.Sstid == code);
+                return new JsonResult(new
+                {
+                    success = true,
+                    isFavorite = isFavorite,
+                    favoritesCount = favCount,
+                    message = message,
+                    code = code,
+                    fee = prod?.Fee ?? 0,
+                    feeFormatted = (prod?.Fee.HasValue == true && prod.Fee > 0) ? $"{prod.Fee.Value:N0} ریال" : "۰ ریال",
+                    mu = prod?.Mu ?? "",
+                    muTitle = prod?.MeasureUnit?.Title ?? "تعیین‌نشده"
+                });
+            }
+
+            SuccessMessage = message;
             return RedirectToPage(new { Tab = returnTab ?? "fav", Search = search, PageNumber = pageNumber });
+        }
+
+        public async Task<IActionResult> OnPostUpdateProductDetailsAsync(string code, decimal? fee, string? mu, string? customTitle)
+        {
+            var username = User.Identity?.Name;
+            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(code))
+            {
+                return new JsonResult(new { success = false, message = "درخواست نامعتبر است." });
+            }
+
+            code = code.Trim();
+            var stuff = await _context.Stuffs.FindAsync(code);
+            var prod = await _context.Products.Include(p => p.MeasureUnit).FirstOrDefaultAsync(p => p.Creator == username && p.Sstid == code);
+
+            if (prod == null)
+            {
+                VatRate vra = VatRate.درصد_10;
+                if (stuff != null)
+                {
+                    if (stuff.VatRate == 0 || !stuff.VatTax) vra = VatRate.معاف;
+                    else if (stuff.VatRate == 9) vra = VatRate.درصد_9;
+                    else if (stuff.VatRate == 10) vra = VatRate.درصد_10;
+                    else if (stuff.VatRate == 16) vra = VatRate.درصد_16;
+                }
+
+                prod = new Product
+                {
+                    Sstid = code,
+                    Sstt = !string.IsNullOrWhiteSpace(customTitle) ? customTitle.Trim() : (stuff?.Title ?? code),
+                    StuffType = stuff?.Type ?? StuffType.شناسه_عمومی_تولید_داخل_کالا,
+                    Vra = vra,
+                    Creator = username,
+                    Fee = fee ?? 0,
+                    Mu = string.IsNullOrWhiteSpace(mu) ? null : mu.Trim()
+                };
+                _context.Products.Add(prod);
+            }
+            else
+            {
+                prod.Fee = fee ?? 0;
+                prod.Mu = string.IsNullOrWhiteSpace(mu) ? null : mu.Trim();
+                if (!string.IsNullOrWhiteSpace(customTitle))
+                {
+                    prod.Sstt = customTitle.Trim();
+                }
+            }
+
+            // اطمینان از قرار داشتن در کالاهای منتخب
+            var fav = await _context.UserFavoriteStuffs.FirstOrDefaultAsync(f => f.Username == username && f.StuffCode == code);
+            if (fav == null)
+            {
+                _context.UserFavoriteStuffs.Add(new UserFavoriteStuff
+                {
+                    Username = username,
+                    StuffCode = code,
+                    AddedDate = DateTime.Now
+                });
+            }
+
+            await _context.SaveChangesAsync();
+
+            string? muTitle = null;
+            if (!string.IsNullOrWhiteSpace(prod.Mu))
+            {
+                var measureUnit = await _context.MeasureUnits.FirstOrDefaultAsync(m => m.Code == prod.Mu);
+                muTitle = measureUnit?.Title;
+            }
+
+            var favCount = await _context.UserFavoriteStuffs.CountAsync(f => f.Username == username);
+
+            await _activityLogger.LogAsync(
+                "کالا/خدمت",
+                "ویرایش مشخصات کالا",
+                $"تنظیم قیمت {(prod.Fee ?? 0):N0} ریال و واحد سنجش {muTitle ?? "تعیین‌نشده"} برای شناسه {code}",
+                entityId: prod.Id.ToString());
+
+            return new JsonResult(new
+            {
+                success = true,
+                message = $"مشخصات کالا «{prod.Sstt}» با موفقیت ذخیره شد.",
+                code = prod.Sstid,
+                title = prod.Sstt,
+                fee = prod.Fee ?? 0,
+                feeFormatted = (prod.Fee.HasValue && prod.Fee > 0) ? $"{prod.Fee.Value:N0} ریال" : "۰ ریال",
+                mu = prod.Mu ?? "",
+                muTitle = muTitle ?? "تعیین‌نشده",
+                favoritesCount = favCount
+            });
         }
 
         public async Task<IActionResult> OnPostAddToProductsAsync(string code, string? returnTab, string? search, int pageNumber = 1)
@@ -208,12 +410,20 @@ namespace Invoice.Pages.StuffPages
             var username = User.Identity?.Name;
             if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(code))
             {
+                if (IsAjaxRequest())
+                {
+                    return new JsonResult(new { success = false, message = "درخواست نامعتبر است." });
+                }
                 return RedirectToPage(new { Tab = returnTab ?? "fav", Search = search, PageNumber = pageNumber });
             }
 
             var stuff = await _context.Stuffs.FindAsync(code);
             if (stuff == null)
             {
+                if (IsAjaxRequest())
+                {
+                    return new JsonResult(new { success = false, message = "شناسه کالا در بانک اطلاعاتی یافت نشد." });
+                }
                 ErrorMessage = "شناسه کالا در بانک اطلاعاتی یافت نشد.";
                 return RedirectToPage(new { Tab = returnTab ?? "fav", Search = search, PageNumber = pageNumber });
             }
@@ -224,7 +434,12 @@ namespace Invoice.Pages.StuffPages
 
             if (existingProduct != null)
             {
-                ErrorMessage = $"کالای «{stuff.Title}» قبلاً در لیست کالاهای شما ثبت شده است.";
+                var msg = $"کالای «{stuff.Title}» قبلاً در لیست کالاهای شما ثبت شده است.";
+                if (IsAjaxRequest())
+                {
+                    return new JsonResult(new { success = false, message = msg, alreadyExists = true, code = code });
+                }
+                ErrorMessage = msg;
                 return RedirectToPage(new { Tab = returnTab ?? "fav", Search = search, PageNumber = pageNumber });
             }
 
@@ -266,8 +481,20 @@ namespace Invoice.Pages.StuffPages
                 $"افزودن کالا {stuff.Code} ({stuff.Title}) به لیست کالاهای کاربر",
                 entityId: product.Id.ToString());
 
-            SuccessMessage = $"کالای «{stuff.Title}» با موفقیت به لیست کالاهای شما اضافه شد.";
+            var successMsg = $"کالای «{stuff.Title}» با موفقیت به لیست کالاهای شما اضافه شد.";
 
+            if (IsAjaxRequest())
+            {
+                return new JsonResult(new
+                {
+                    success = true,
+                    message = successMsg,
+                    code = code,
+                    productId = product.Id
+                });
+            }
+
+            SuccessMessage = successMsg;
             return RedirectToPage(new { Tab = returnTab ?? "fav", Search = search, PageNumber = pageNumber });
         }
     }

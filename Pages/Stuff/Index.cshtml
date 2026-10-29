@@ -1,7 +1,7 @@
 @page
 @model Invoice.Pages.StuffPages.IndexModel
 @{
-    ViewBag.Title = "بانک کالاها و علاقه‌مندی‌ها";
+    ViewBag.Title = "مدیریت کالاها و خدمات (کالاهای منتخب)";
     Layout = "~/Pages/Shared/_layout.cshtml";
 }
 
@@ -9,16 +9,16 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
         <div>
             <h4 class="mb-1 text-primary">
-                <i class="fas fa-boxes me-2"></i> بانک شناسه‌های کالا و خدمات سامانه مودیان
+                <i class="fas fa-boxes me-2"></i> مدیریت کالاها و خدمات (کالاهای منتخب)
             </h4>
             <span class="text-muted small">
-                جستجو در بین کالاها و مدیریت لیست علاقه‌مندی‌ها جهت استفاده سریع در صدور فاکتور
+                انتخاب شناسه‌های کالا و خدمات سامانه مودیان، تعیین قیمت واحد (فی) و واحد سنجش برای صدور سریع فاکتور
             </span>
         </div>
         <div>
-            <a asp-page="/Product/Index" class="btn btn-outline-primary btn-sm">
-                <i class="fas fa-list me-1"></i> مشاهده لیست کالاهای من
-            </a>
+            <span class="badge bg-light text-secondary border px-3 py-2">
+                <i class="fas fa-check-circle text-success me-1"></i> متصل به صدور فاکتور
+            </span>
         </div>
     </div>
 
@@ -39,17 +39,17 @@
     }
 
     <!-- Tabs -->
-    <ul class="nav nav-pills mb-3 border-bottom pb-2">
+    <ul class="nav nav-pills mb-3 border-bottom pb-2" id="stuffTabs">
         <li class="nav-item">
-            <a class="nav-link @(Model.Tab == "fav" ? "active" : "")" asp-page="./Index" asp-route-Tab="fav">
+            <a class="nav-link @(Model.Tab == "fav" ? "active" : "") tab-link" href="#" data-tab="fav">
                 <i class="fas fa-star me-1 text-warning"></i> کالاهای منتخب من
-                <span class="badge @(Model.Tab == "fav" ? "bg-white text-primary" : "bg-warning text-dark") rounded-pill ms-1">
+                <span id="favCountBadge" class="badge @(Model.Tab == "fav" ? "bg-white text-primary" : "bg-warning text-dark") rounded-pill ms-1">
                     @Model.FavoritesCount
                 </span>
             </a>
         </li>
         <li class="nav-item">
-            <a class="nav-link @(Model.Tab == "all" ? "active" : "")" asp-page="./Index" asp-route-Tab="all">
+            <a class="nav-link @(Model.Tab == "all" ? "active" : "") tab-link" href="#" data-tab="all">
                 <i class="fas fa-search me-1"></i> جستجو در کل شناسه‌ها
             </a>
         </li>
@@ -58,171 +58,556 @@
     <!-- Search Box -->
     <div class="card shadow-sm border-0 mb-3">
         <div class="card-body p-3">
-            <form method="get" class="row g-2 align-items-center">
-                <input type="hidden" name="Tab" value="@Model.Tab" />
-                <div class="col-md-9">
+            <form id="searchForm" method="get" class="row g-2 align-items-center" onsubmit="return false;">
+                <input type="hidden" id="currentTab" name="Tab" value="@Model.Tab" />
+                <input type="hidden" id="currentPage" name="PageNumber" value="@Model.PageNumber" />
+                <div class="col-md-10">
                     <div class="input-group">
-                        <span class="input-group-text bg-light"><i class="fas fa-search"></i></span>
-                        <input type="text" class="form-control" asp-for="Search" placeholder="جستجو بر اساس شناسه کالا (۱۳ رقم) یا شرح کالا و خدمت..." />
+                        <span class="input-group-text bg-light text-muted"><i class="fas fa-search"></i></span>
+                        <input type="text"
+                               id="searchInput"
+                               class="form-control"
+                               name="Search"
+                               value="@Model.Search"
+                               placeholder="جستجوی خودکار با تایپ شناسه یا شرح کالا (بدون نیاز به کلیک)..."
+                               autocomplete="off" />
+                        <button type="button"
+                                id="clearSearchBtn"
+                                class="btn btn-outline-secondary @(string.IsNullOrWhiteSpace(Model.Search) ? "d-none" : "")"
+                                title="پاک کردن جستجو">
+                            <i class="fas fa-times"></i>
+                        </button>
+                        <span id="searchSpinner" class="input-group-text bg-light d-none">
+                            <i class="fas fa-spinner fa-spin text-primary"></i>
+                        </span>
                     </div>
                 </div>
-                <div class="col-md-3 d-flex gap-2">
-                    <button type="submit" class="btn btn-primary flex-grow-1">
+                <div class="col-md-2 d-flex gap-2">
+                    <button type="button" id="manualSearchBtn" class="btn btn-primary flex-grow-1">
                         <i class="fas fa-search me-1"></i> جستجو
                     </button>
-                    @if (!string.IsNullOrWhiteSpace(Model.Search))
-                    {
-                        <a asp-page="./Index" asp-route-Tab="@Model.Tab" class="btn btn-outline-secondary">پاک کردن</a>
-                    }
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Table -->
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-striped align-middle mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width: 50px;" class="text-center">⭐</th>
-                            <th style="width: 180px;">شناسه کالا/خدمت</th>
-                            <th>شرح کالا/خدمت</th>
-                            <th style="width: 120px;" class="text-center">نرخ مالیات (٪)</th>
-                            <th style="width: 150px;" class="text-center">نوع شناسه</th>
-                            <th style="width: 100px;" class="text-center">مشمولیت</th>
-                            <th style="width: 160px;" class="text-center">عملیات</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @if (!Model.Items.Any())
-                        {
-                            <tr>
-                                <td colspan="7" class="text-center py-5 text-muted">
-                                    <i class="fas fa-box-open fa-3x mb-3 text-secondary d-block"></i>
-                                    @if (Model.Tab == "fav")
-                                    {
-                                        <span>لیست کالاهای منتخب شما خالی است. با مراجعه به تب «جستجو در کل شناسه‌ها» می‌توانید کالاهای پرمصرف خود را ستاره‌دار کنید.</span>
-                                    }
-                                    else
-                                    {
-                                        <span>هیچ موردی با مشخصات جستجو شده یافت نشد.</span>
-                                    }
-                                </td>
-                            </tr>
-                        }
-                        else
-                        {
-                            @foreach (var item in Model.Items)
-                            {
-                                <tr>
-                                    <td class="text-center">
-                                        <form method="post" asp-page-handler="ToggleFavorite" class="d-inline">
-                                            <input type="hidden" name="code" value="@item.Code" />
-                                            <input type="hidden" name="returnTab" value="@Model.Tab" />
-                                            <input type="hidden" name="search" value="@Model.Search" />
-                                            <input type="hidden" name="pageNumber" value="@Model.PageNumber" />
-                                            <button type="submit" class="btn btn-link p-0 text-decoration-none shadow-none" title="@(item.IsFavorite ? "حذف از منتخب‌ها" : "افزودن به منتخب‌ها")">
-                                                @if (item.IsFavorite)
-                                                {
-                                                    <i class="fas fa-star text-warning fa-lg"></i>
-                                                }
-                                                else
-                                                {
-                                                    <i class="far fa-star text-muted fa-lg"></i>
-                                                }
-                                            </button>
-                                        </form>
-                                    </td>
-                                    <td>
-                                        <code class="fw-bold text-dark font-monospace" dir="ltr">@item.Code</code>
-                                    </td>
-                                    <td>
-                                        <span class="fw-semibold">@item.Title</span>
-                                    </td>
-                                    <td class="text-center">
-                                        <span class="badge bg-light text-dark border">@item.VatRate %</span>
-                                    </td>
-                                    <td class="text-center small text-muted">
-                                        @item.Type.ToString().Replace("_", " ")
-                                    </td>
-                                    <td class="text-center">
-                                        @if (item.VatTax)
-                                        {
-                                            <span class="badge bg-success-subtle text-success">مشمول</span>
-                                        }
-                                        else
-                                        {
-                                            <span class="badge bg-secondary-subtle text-secondary">معاف</span>
-                                        }
-                                    </td>
-                                    <td class="text-center">
-                                        <div class="d-flex justify-content-center gap-1">
-                                            @if (item.IsInProducts)
-                                            {
-                                                <span class="badge bg-success-subtle text-success py-2 px-2" title="این کالا قبلاً در لیست کالاهای شما ثبت شده است">
-                                                    <i class="fas fa-check me-1"></i> در کالاهای من
-                                                </span>
-                                            }
-                                            else
-                                            {
-                                                <form method="post" asp-page-handler="AddToProducts" class="d-inline">
-                                                    <input type="hidden" name="code" value="@item.Code" />
-                                                    <input type="hidden" name="returnTab" value="@Model.Tab" />
-                                                    <input type="hidden" name="search" value="@Model.Search" />
-                                                    <input type="hidden" name="pageNumber" value="@Model.PageNumber" />
-                                                    <button type="submit" class="btn btn-outline-success btn-sm" title="افزودن به لیست کالاهای من جهت صدور فاکتور">
-                                                        <i class="fas fa-plus me-1"></i> ثبت در کالاهای من
-                                                    </button>
-                                                </form>
-                                            }
-                                        </div>
-                                    </td>
-                                </tr>
-                            }
-                        }
-                    </tbody>
-                </table>
+    <!-- Table Container (loaded via AJAX without page reload) -->
+    <div id="tableContainer" class="position-relative">
+        <div id="tableLoadingOverlay" class="position-absolute top-0 start-0 w-100 h-100 bg-white bg-opacity-75 d-none justify-content-center align-items-center" style="z-index: 10; min-height: 200px;">
+            <div class="text-center p-4">
+                <div class="spinner-border text-primary" role="status"></div>
+                <div class="small text-muted mt-2">در حال بارگذاری اطلاعات...</div>
             </div>
         </div>
-
-        @if (Model.TotalPages > 1)
-        {
-            <div class="card-footer bg-white d-flex justify-content-between align-items-center py-2">
-                <span class="text-muted small">
-                    صفحه @Model.PageNumber از @Model.TotalPages (نمایش @Model.Items.Count از @Model.TotalCount.ToString("N0") مورد)
-                </span>
-                <nav>
-                    <ul class="pagination pagination-sm mb-0">
-                        @if (Model.PageNumber > 1)
-                        {
-                            <li class="page-item">
-                                <a class="page-link" asp-page="./Index" asp-route-Tab="@Model.Tab" asp-route-Search="@Model.Search" asp-route-PageNumber="@(Model.PageNumber - 1)">قبلی</a>
-                            </li>
-                        }
-
-                        @{
-                            var startPage = Math.Max(1, Model.PageNumber - 2);
-                            var endPage = Math.Min(Model.TotalPages, Model.PageNumber + 2);
-                        }
-
-                        @for (var p = startPage; p <= endPage; p++)
-                        {
-                            <li class="page-item @(p == Model.PageNumber ? "active" : "")">
-                                <a class="page-link" asp-page="./Index" asp-route-Tab="@Model.Tab" asp-route-Search="@Model.Search" asp-route-PageNumber="@p">@p</a>
-                            </li>
-                        }
-
-                        @if (Model.PageNumber < Model.TotalPages)
-                        {
-                            <li class="page-item">
-                                <a class="page-link" asp-page="./Index" asp-route-Tab="@Model.Tab" asp-route-Search="@Model.Search" asp-route-PageNumber="@(Model.PageNumber + 1)">بعدی</a>
-                            </li>
-                        }
-                    </ul>
-                </nav>
-            </div>
-        }
+        <partial name="_StuffTablePartial" model="Model" />
     </div>
 </div>
+
+<!-- Modal for Editing Product Details (Fee & Measure Unit) -->
+<div class="modal fade" id="editProductModal" tabindex="-1" aria-labelledby="editProductModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow border-0">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fs-6" id="editProductModalLabel">
+                    <i class="fas fa-edit me-1"></i> تنظیم قیمت واحد و واحد سنجش کالا
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="بستن"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="editProductForm" onsubmit="return false;">
+                    <input type="hidden" id="modalStuffCode" />
+
+                    <div class="d-flex justify-content-between align-items-center mb-3 p-2 bg-light rounded border">
+                        <div>
+                            <small class="text-muted d-block">شناسه کالا/خدمت:</small>
+                            <code class="fw-bold font-monospace fs-6 text-dark" id="modalStuffCodeDisplay" dir="ltr"></code>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted d-block">نرخ مالیات:</small>
+                            <span class="badge bg-light text-dark border" id="modalVatRateDisplay"></span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="modalCustomTitle" class="form-label small fw-bold">شرح کالا/خدمت:</label>
+                        <input type="text" class="form-control" id="modalCustomTitle" />
+                        <div class="form-text text-muted small">می‌توانید شرح را به صورت اختصاصی برای فاکتورهای خود ذخیره نمایید.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="modalMeasureUnit" class="form-label small fw-bold">واحد سنجش / اندازه‌گیری:</label>
+                        <select class="form-select" id="modalMeasureUnit">
+                            <option value="">-- بدون واحد سنجش (انتخاب کنید) --</option>
+                            @foreach (var mu in Model.MeasureUnits)
+                            {
+                                <option value="@mu.Code">@mu.Title (@mu.Code)</option>
+                            }
+                        </select>
+                        <div class="form-text text-muted small">این واحد در صدور فاکتور به عنوان واحد سنجش پیش‌فرض درج خواهد شد.</div>
+                    </div>
+
+                    <div class="mb-2">
+                        <label for="modalFeeInput" class="form-label small fw-bold">مبلغ واحد / فی (ریال):</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control font-monospace text-end" id="modalFeeInput" dir="ltr" placeholder="0" />
+                            <span class="input-group-text bg-light text-muted">ریال</span>
+                        </div>
+                        <div class="form-text text-muted small mt-1" id="modalFeeInWords"></div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-success btn-sm px-3" id="modalSaveBtn">
+                    <i class="fas fa-check me-1"></i> ذخیره تغییرات
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
+
+    <script>
+        (function () {
+            const searchInput = document.getElementById('searchInput');
+            const clearSearchBtn = document.getElementById('clearSearchBtn');
+            const searchSpinner = document.getElementById('searchSpinner');
+            const manualSearchBtn = document.getElementById('manualSearchBtn');
+            const currentTabInput = document.getElementById('currentTab');
+            const currentPageInput = document.getElementById('currentPage');
+            const tableContainer = document.getElementById('tableContainer');
+            const tableLoadingOverlay = document.getElementById('tableLoadingOverlay');
+            const favCountBadge = document.getElementById('favCountBadge');
+            const tabLinks = document.querySelectorAll('.tab-link');
+
+            // المان‌های مودال ویرایش
+            const editProductModalEl = document.getElementById('editProductModal');
+            const modalStuffCode = document.getElementById('modalStuffCode');
+            const modalStuffCodeDisplay = document.getElementById('modalStuffCodeDisplay');
+            const modalVatRateDisplay = document.getElementById('modalVatRateDisplay');
+            const modalCustomTitle = document.getElementById('modalCustomTitle');
+            const modalMeasureUnit = document.getElementById('modalMeasureUnit');
+            const modalFeeInput = document.getElementById('modalFeeInput');
+            const modalFeeInWords = document.getElementById('modalFeeInWords');
+            const modalSaveBtn = document.getElementById('modalSaveBtn');
+
+            let searchDebounceTimer = null;
+            let currentAbortController = null;
+            let bsEditModal = null;
+
+            if (editProductModalEl && typeof bootstrap !== 'undefined') {
+                bsEditModal = new bootstrap.Modal(editProductModalEl);
+            }
+
+            // فرمت اعداد با کاما
+            function formatNumber(val) {
+                if (!val) return '';
+                const clean = val.toString().replace(/[^0-9]/g, '');
+                return clean ? parseInt(clean, 10).toLocaleString('en-US') : '';
+            }
+
+            modalFeeInput.addEventListener('input', function () {
+                const formatted = formatNumber(this.value);
+                this.value = formatted;
+                if (formatted) {
+                    const cleanNum = parseInt(this.value.replace(/,/g, ''), 10);
+                    modalFeeInWords.textContent = `${cleanNum.toLocaleString('fa-IR')} ریال`;
+                } else {
+                    modalFeeInWords.textContent = '';
+                }
+            });
+
+            // دریافت توکن AntiForgery جهت درخواست‌های امن POST
+            function getAntiForgeryToken() {
+                const tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
+                return tokenInput ? tokenInput.value : '';
+            }
+
+            // اعلان پیام موقت (Toast) بدون نیاز به ریفرش
+            function showToast(message, type = 'success') {
+                let container = document.getElementById('liveToastContainer');
+                if (!container) {
+                    container = document.createElement('div');
+                    container.id = 'liveToastContainer';
+                    container.style.cssText = 'position:fixed;bottom:24px;left:24px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none;';
+                    document.body.appendChild(container);
+                }
+                const toast = document.createElement('div');
+                const bgClass = type === 'success' ? 'bg-success text-white' : (type === 'danger' ? 'bg-danger text-white' : 'bg-dark text-white');
+                const icon = type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle';
+                toast.className = `shadow-lg rounded-3 px-3 py-2 small d-flex align-items-center gap-2 ${bgClass}`;
+                toast.style.cssText = 'pointer-events:auto;transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1);transform:translateY(20px);opacity:0;';
+                toast.innerHTML = `<i class="fas ${icon}"></i><span>${message}</span>`;
+                container.appendChild(toast);
+                requestAnimationFrame(() => {
+                    toast.style.transform = 'translateY(0)';
+                    toast.style.opacity = '1';
+                });
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(-10px)';
+                    setTimeout(() => toast.remove(), 300);
+                }, 2600);
+            }
+
+            // واکشی داده‌های جدول به صورت AJAX
+            async function fetchTableData(tab, search, pageNumber, pushHistory = true) {
+                if (currentAbortController) {
+                    currentAbortController.abort();
+                }
+                currentAbortController = new AbortController();
+
+                searchSpinner.classList.remove('d-none');
+                if (tableLoadingOverlay) tableLoadingOverlay.classList.remove('d-none');
+
+                currentTabInput.value = tab;
+                currentPageInput.value = pageNumber;
+
+                const params = new URLSearchParams({
+                    Tab: tab,
+                    Search: search || '',
+                    PageNumber: pageNumber.toString(),
+                    ajax: '1'
+                });
+
+                try {
+                    const response = await fetch(`/Stuff/Index?${params.toString()}`, {
+                        method: 'GET',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        signal: currentAbortController.signal
+                    });
+
+                    if (!response.ok) throw new Error('خطا در دریافت اطلاعات');
+
+                    const html = await response.text();
+                    tableContainer.innerHTML = html;
+
+                    // بروزرسانی متاداده‌ها از تگ tableDataHolder
+                    const dataHolder = document.getElementById('tableDataHolder');
+                    if (dataHolder) {
+                        const newFavCount = dataHolder.getAttribute('data-favorites-count');
+                        if (newFavCount !== null && favCountBadge) {
+                            favCountBadge.textContent = newFavCount;
+                        }
+                    }
+
+                    // بروزرسانی وضعیت دکمه پاک‌کردن
+                    if (search && search.trim().length > 0) {
+                        clearSearchBtn.classList.remove('d-none');
+                    } else {
+                        clearSearchBtn.classList.add('d-none');
+                    }
+
+                    // بروزرسانی URL مرورگر بدون ریلود صفحه
+                    if (pushHistory) {
+                        const displayParams = new URLSearchParams();
+                        if (tab !== 'fav') displayParams.set('Tab', tab);
+                        if (search && search.trim().length > 0) displayParams.set('Search', search.trim());
+                        if (pageNumber > 1) displayParams.set('PageNumber', pageNumber.toString());
+                        const newUrl = `${window.location.pathname}${displayParams.toString() ? '?' + displayParams.toString() : ''}`;
+                        window.history.pushState({ tab, search, pageNumber }, '', newUrl);
+                    }
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        console.error('Fetch error:', err);
+                        showToast('خطا در برقراری ارتباط با سرور.', 'danger');
+                    }
+                } finally {
+                    searchSpinner.classList.add('d-none');
+                    if (tableLoadingOverlay) tableLoadingOverlay.classList.add('d-none');
+                }
+            }
+
+            // جستجوی زنده (Live Search) با مکانیزم Debounce (300 میلی‌ثانیه)
+            searchInput.addEventListener('input', function () {
+                const term = this.value;
+                if (term.trim().length > 0) {
+                    clearSearchBtn.classList.remove('d-none');
+                } else {
+                    clearSearchBtn.classList.add('d-none');
+                }
+
+                clearTimeout(searchDebounceTimer);
+                searchDebounceTimer = setTimeout(() => {
+                    const tab = currentTabInput.value || 'fav';
+                    fetchTableData(tab, term, 1);
+                }, 300);
+            });
+
+            // دکمه جستجوی دستی
+            manualSearchBtn.addEventListener('click', function () {
+                clearTimeout(searchDebounceTimer);
+                const tab = currentTabInput.value || 'fav';
+                fetchTableData(tab, searchInput.value, 1);
+            });
+
+            // دکمه پاک کردن عبارت جستجو
+            clearSearchBtn.addEventListener('click', function () {
+                searchInput.value = '';
+                this.classList.add('d-none');
+                clearTimeout(searchDebounceTimer);
+                const tab = currentTabInput.value || 'fav';
+                fetchTableData(tab, '', 1);
+                searchInput.focus();
+            });
+
+            // سوئیچ بین تب‌ها (کالاهای منتخب من / جستجو در کل شناسه‌ها) بدون ریفرش صفحه
+            tabLinks.forEach(link => {
+                link.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const targetTab = this.getAttribute('data-tab');
+                    if (targetTab === currentTabInput.value) return;
+
+                    tabLinks.forEach(l => {
+                        l.classList.remove('active');
+                        const badge = l.querySelector('.badge');
+                        if (badge) {
+                            badge.className = 'badge bg-warning text-dark rounded-pill ms-1';
+                        }
+                    });
+
+                    this.classList.add('active');
+                    const activeBadge = this.querySelector('.badge');
+                    if (activeBadge) {
+                        activeBadge.className = 'badge bg-white text-primary rounded-pill ms-1';
+                    }
+
+                    fetchTableData(targetTab, searchInput.value, 1);
+                });
+            });
+
+            // هندل کردن رویدادهای کلیک داخل کانتینر جدول (Event Delegation)
+            tableContainer.addEventListener('click', async function (e) {
+                // ۱. صفحه‌بندی (Pagination)
+                const pageLink = e.target.closest('.ajax-page-link');
+                if (pageLink) {
+                    e.preventDefault();
+                    const targetPage = parseInt(pageLink.getAttribute('data-page') || '1', 10);
+                    const tab = currentTabInput.value || 'fav';
+                    await fetchTableData(tab, searchInput.value, targetPage);
+                    tableContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    return;
+                }
+
+                // ۲. ستاره‌گذاری و لغو ستاره‌گذاری (Toggle Favorite) با AJAX
+                const favBtn = e.target.closest('.btn-toggle-favorite');
+                if (favBtn) {
+                    e.preventDefault();
+                    const code = favBtn.getAttribute('data-code');
+                    const isCurrentlyFav = favBtn.getAttribute('data-fav') === 'true';
+                    const icon = favBtn.querySelector('.star-icon');
+                    const row = favBtn.closest('tr');
+
+                    // جلوه بصری سریع (Optimistic UI)
+                    if (icon) {
+                        if (isCurrentlyFav) {
+                            icon.className = 'far fa-star text-muted fa-lg star-icon';
+                        } else {
+                            icon.className = 'fas fa-star text-warning fa-lg star-icon';
+                        }
+                    }
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('code', code);
+                        formData.append('returnTab', currentTabInput.value || 'fav');
+                        formData.append('search', searchInput.value || '');
+                        formData.append('pageNumber', currentPageInput.value || '1');
+                        formData.append('__RequestVerificationToken', getAntiForgeryToken());
+
+                        const res = await fetch('/Stuff/Index?handler=ToggleFavorite', {
+                            method: 'POST',
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: formData
+                        });
+
+                        const data = await res.json();
+                        if (data.success) {
+                            favBtn.setAttribute('data-fav', data.isFavorite ? 'true' : 'false');
+                            favBtn.setAttribute('title', data.isFavorite ? 'حذف از منتخب‌ها' : 'افزودن به منتخب‌ها');
+                            if (icon) {
+                                icon.className = data.isFavorite ? 'fas fa-star text-warning fa-lg star-icon' : 'far fa-star text-muted fa-lg star-icon';
+                            }
+                            if (favCountBadge && typeof data.favoritesCount !== 'undefined') {
+                                favCountBadge.textContent = data.favoritesCount;
+                            }
+                            showToast(data.message, data.isFavorite ? 'success' : 'dark');
+
+                            // در صورتی که کاربر در تب «منتخب من» باشد و آیتمی را لغو کرد، ردیف به زیبایی حذف شود
+                            if (currentTabInput.value === 'fav' && !data.isFavorite && row) {
+                                row.style.transition = 'all 0.3s ease';
+                                row.style.opacity = '0';
+                                row.style.transform = 'translateX(20px)';
+                                setTimeout(() => {
+                                    row.remove();
+                                    const remainingRows = tableContainer.querySelectorAll('.stuff-row');
+                                    if (remainingRows.length === 0) {
+                                        fetchTableData('fav', searchInput.value, parseInt(currentPageInput.value || '1', 10));
+                                    }
+                                }, 300);
+                            }
+                        } else {
+                            // بازگرداندن وضعیت قبلی در صورت بروز خطا
+                            if (icon) {
+                                icon.className = isCurrentlyFav ? 'fas fa-star text-warning fa-lg star-icon' : 'far fa-star text-muted fa-lg star-icon';
+                            }
+                            showToast(data.message || 'خطا در تغییر وضعیت منتخب', 'danger');
+                        }
+                    } catch (err) {
+                        console.error('Toggle favorite error:', err);
+                        if (icon) {
+                            icon.className = isCurrentlyFav ? 'fas fa-star text-warning fa-lg star-icon' : 'far fa-star text-muted fa-lg star-icon';
+                        }
+                        showToast('خطا در ارتباط با سرور', 'danger');
+                    }
+                    return;
+                }
+
+                // ۳. کلیک روی دکمه ویرایش قیمت و واحد سنجش کالا
+                const editBtn = e.target.closest('.btn-edit-product');
+                if (editBtn) {
+                    e.preventDefault();
+                    const code = editBtn.getAttribute('data-code');
+                    const title = editBtn.getAttribute('data-title');
+                    const fee = editBtn.getAttribute('data-fee');
+                    const mu = editBtn.getAttribute('data-mu');
+                    const vat = editBtn.getAttribute('data-vat');
+
+                    modalStuffCode.value = code;
+                    modalStuffCodeDisplay.textContent = code;
+                    modalVatRateDisplay.textContent = `${vat}%`;
+                    modalCustomTitle.value = title || '';
+                    modalMeasureUnit.value = mu || '';
+
+                    const numFee = fee ? parseInt(fee, 10) : 0;
+                    modalFeeInput.value = numFee > 0 ? numFee.toLocaleString('en-US') : '';
+                    modalFeeInWords.textContent = numFee > 0 ? `${numFee.toLocaleString('fa-IR')} ریال` : '';
+
+                    if (!bsEditModal && editProductModalEl && typeof bootstrap !== 'undefined') {
+                        bsEditModal = new bootstrap.Modal(editProductModalEl);
+                    }
+                    if (bsEditModal) {
+                        bsEditModal.show();
+                    }
+                    return;
+                }
+            });
+
+            // ذخیره اطلاعات قیمت و واحد سنجش در مودال
+            modalSaveBtn.addEventListener('click', async function () {
+                const code = modalStuffCode.value;
+                const cleanFee = modalFeeInput.value.replace(/[^0-9]/g, '');
+                const fee = cleanFee ? parseInt(cleanFee, 10) : 0;
+                const mu = modalMeasureUnit.value;
+                const customTitle = modalCustomTitle.value.trim();
+
+                modalSaveBtn.disabled = true;
+                const originalHtml = modalSaveBtn.innerHTML;
+                modalSaveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> در حال ذخیره...';
+
+                try {
+                    const formData = new FormData();
+                    formData.append('code', code);
+                    formData.append('fee', fee);
+                    formData.append('mu', mu);
+                    formData.append('customTitle', customTitle);
+                    formData.append('__RequestVerificationToken', getAntiForgeryToken());
+
+                    const res = await fetch('/Stuff/Index?handler=UpdateProductDetails', {
+                        method: 'POST',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: formData
+                    });
+
+                    const data = await res.json();
+                    if (data.success) {
+                        // بروزرسانی سطر در جدول
+                        const row = document.getElementById(`row-${code}`);
+                        if (row) {
+                            // بروزرسانی ویژگی‌های دکمه ادیت
+                            const editBtn = row.querySelector('.btn-edit-product');
+                            if (editBtn) {
+                                editBtn.setAttribute('data-fee', data.fee || 0);
+                                editBtn.setAttribute('data-mu', data.mu || '');
+                                if (data.title) editBtn.setAttribute('data-title', data.title);
+                            }
+
+                            // بروزرسانی عنوان کالا در سطر
+                            const titleEl = row.querySelector('.item-title');
+                            if (titleEl && data.title) {
+                                titleEl.textContent = data.title;
+                            }
+
+                            // بروزرسانی سلول واحد سنجش
+                            const muCell = row.querySelector('.cell-mu');
+                            if (muCell) {
+                                if (data.mu && data.muTitle && data.muTitle !== 'تعیین‌نشده') {
+                                    muCell.innerHTML = `<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle py-1 px-2 mu-badge" title="کد واحد: ${data.mu}"><i class="fas fa-balance-scale me-1 small"></i><span class="mu-text">${data.muTitle}</span></span>`;
+                                } else {
+                                    muCell.innerHTML = `<span class="text-muted small mu-empty">تعیین‌نشده</span>`;
+                                }
+                            }
+
+                            // بروزرسانی سلول فی (مبلغ واحد)
+                            const feeCell = row.querySelector('.cell-fee');
+                            if (feeCell) {
+                                if (data.fee && data.fee > 0) {
+                                    feeCell.innerHTML = `<span class="fw-bold text-dark font-monospace fee-text" dir="ltr">${data.feeFormatted}</span>`;
+                                } else {
+                                    feeCell.innerHTML = `<span class="text-muted small fee-empty">۰ ریال</span>`;
+                                }
+                            }
+
+                            // ستاره‌دار کردن در صورت عدم ستاره‌داری قبلی
+                            const favBtn = row.querySelector('.btn-toggle-favorite');
+                            if (favBtn) {
+                                favBtn.setAttribute('data-fav', 'true');
+                                favBtn.setAttribute('title', 'حذف از منتخب‌ها');
+                                const starIcon = favBtn.querySelector('.star-icon');
+                                if (starIcon) {
+                                    starIcon.className = 'fas fa-star text-warning fa-lg star-icon';
+                                }
+                            }
+                        }
+
+                        if (favCountBadge && typeof data.favoritesCount !== 'undefined') {
+                            favCountBadge.textContent = data.favoritesCount;
+                        }
+
+                        if (bsEditModal) {
+                            bsEditModal.hide();
+                        }
+                        showToast(data.message, 'success');
+                    } else {
+                        showToast(data.message || 'خطا در ذخیره مشخصات کالا', 'danger');
+                    }
+                } catch (err) {
+                    console.error('Update product details error:', err);
+                    showToast('خطا در ارتباط با سرور', 'danger');
+                } finally {
+                    modalSaveBtn.disabled = false;
+                    modalSaveBtn.innerHTML = originalHtml;
+                }
+            });
+
+            // مدیریت دکمه بازگشت تاریخچه مرورگر (Back/Forward)
+            window.addEventListener('popstate', function (e) {
+                const state = e.state;
+                if (state) {
+                    currentTabInput.value = state.tab || 'fav';
+                    searchInput.value = state.search || '';
+                    currentPageInput.value = state.pageNumber || 1;
+                    fetchTableData(state.tab, state.search, state.pageNumber, false);
+                }
+            });
+        })();
+    </script>
+}
