@@ -64,6 +64,11 @@ builder.Services.AddHttpClient("BaleClient", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(15);
 });
+// کلاینت اختصاصی برای دریافت بلندمدت پیام‌ها (Long-Polling) با مهلت زمانی کافی برای جلوگیری از تایم‌اوت‌های ناخواسته
+builder.Services.AddHttpClient("BalePollingClient", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(45);
+});
 builder.Services.AddSingleton<IBaleSettingsService, BaleSettingsService>();
 builder.Services.AddScoped<IBaleNotificationService, BaleNotificationService>();
 builder.Services.AddScoped<IBaleBotActionService, BaleBotActionService>();

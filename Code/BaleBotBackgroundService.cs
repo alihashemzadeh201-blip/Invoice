@@ -51,7 +51,7 @@ namespace Invoice.Code
                     }
 
                     var token = settings.BotToken.Trim();
-                    var client = _httpClientFactory.CreateClient("BaleClient");
+                    var client = _httpClientFactory.CreateClient("BalePollingClient");
                     var url = $"https://tapi.bale.ai/bot{token}/getUpdates";
 
                     var query = new
@@ -92,7 +92,9 @@ namespace Invoice.Code
                                 {
                                     using var scope = _scopeFactory.CreateScope();
                                     var processor = scope.ServiceProvider.GetRequiredService<IBaleUpdateProcessor>();
-                                    await processor.ProcessUpdateAsync(update.Clone(), stoppingToken);
+                                    using var updateCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                                    updateCts.CancelAfter(TimeSpan.FromSeconds(60));
+                                    await processor.ProcessUpdateAsync(update.Clone(), updateCts.Token);
                                 }
                                 catch (Exception exProc)
                                 {
@@ -118,6 +120,10 @@ namespace Invoice.Code
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
                     break;
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogDebug("تایم‌اوت موقت اتصال در Polling ربات مدیریتی بله. شروع چرخه جدید...");
                 }
                 catch (Exception ex)
                 {

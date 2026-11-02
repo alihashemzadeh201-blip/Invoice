@@ -49,7 +49,7 @@ namespace Invoice.Code
                     }
 
                     var token = settings.UserBotToken.Trim();
-                    var client = _httpClientFactory.CreateClient("BaleClient");
+                    var client = _httpClientFactory.CreateClient("BalePollingClient");
                     var url = $"https://tapi.bale.ai/bot{token}/getUpdates";
 
                     var query = new
@@ -90,7 +90,9 @@ namespace Invoice.Code
                                 {
                                     using var scope = _scopeFactory.CreateScope();
                                     var userBotService = scope.ServiceProvider.GetRequiredService<IBaleUserBotService>();
-                                    await userBotService.ProcessUpdateAsync(update.Clone(), stoppingToken);
+                                    using var updateCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                                    updateCts.CancelAfter(TimeSpan.FromSeconds(60));
+                                    await userBotService.ProcessUpdateAsync(update.Clone(), updateCts.Token);
                                 }
                                 catch (Exception exProc)
                                 {
@@ -98,6 +100,23 @@ namespace Invoice.Code
                                 }
                             }
                         }
+                    }
+                    else if (response.StatusCode == HttpStatusCode.Conflict)
+                    {
+                        var errorBody = await response.Content.ReadAsStringAsync(stoppingToken);
+                        _logger.LogWarning("درخواست getUpdates ربات کاربر با خطای 409 Conflict مواجه شد: {Error}. در حال تلاش برای حذف وب‌هوک احتمالی...", errorBody);
+
+                        try
+                        {
+                            var delUrl = $"https://tapi.bale.ai/bot{token}/deleteWebhook";
+                            await client.PostAsync(delUrl, null, stoppingToken);
+                        }
+                        catch (Exception exDel)
+                        {
+                            _logger.LogDebug(exDel, "تلاش برای حذف وب‌هوک ربات کاربر با خطا مواجه شد.");
+                        }
+
+                        await Task.Delay(TimeSpan.FromSeconds(5), stoppingToken);
                     }
                     else
                     {
@@ -109,6 +128,11 @@ namespace Invoice.Code
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
                 {
                     break;
+                }
+                catch (OperationCanceledException)
+                {
+                    // ناشی از تایم‌اوت موقت اتصال شبکه در Polling؛ سرویس متوقف نمی‌شود و بلافاصله به چرخه بعد می‌رود
+                    _logger.LogDebug("تایم‌اوت موقت شبکه در Polling ربات کاربر بله. شروع چرخه جدید...");
                 }
                 catch (Exception ex)
                 {

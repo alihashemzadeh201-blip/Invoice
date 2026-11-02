@@ -492,6 +492,7 @@
                 mobileMenuToggle.addEventListener('click', function () {
                     if (window.innerWidth <= 768) {
                         sidebar.classList.toggle('mobile-open');
+                        sidebar.classList.toggle('sidebar-open');
                         mobileMenuOverlay.classList.toggle('active');
                     }
                     else {
@@ -503,6 +504,7 @@
 
                 mobileMenuOverlay.addEventListener('click', function () {
                     sidebar.classList.remove('mobile-open');
+                    sidebar.classList.remove('sidebar-open');
                     mobileMenuOverlay.classList.remove('active');
                 });
 
@@ -533,6 +535,7 @@
                     link.addEventListener('click', function () {
                         if (window.innerWidth <= 768) {
                             sidebar.classList.remove('mobile-open');
+                            sidebar.classList.remove('sidebar-open');
                             mobileMenuOverlay.classList.remove('active');
                         }
                     });

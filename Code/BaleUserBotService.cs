@@ -693,9 +693,19 @@ namespace Invoice.Code
                     return;
 
                 case "InvWiz_ItemSelect":
-                    userState.CurrentStep = "InvWiz_Pattern";
-                    await _context.SaveChangesAsync(ct);
-                    await ShowInvoicePatternMenuAsync(chatId, userState, ct);
+                    var currentItems = GetWizardItems(data);
+                    if (currentItems.Count > 0)
+                    {
+                        userState.CurrentStep = "InvWiz_ItemRegistered";
+                        await _context.SaveChangesAsync(ct);
+                        await ShowItemRegisteredMenuAsync(chatId, userState, data, ct);
+                    }
+                    else
+                    {
+                        userState.CurrentStep = "InvWiz_Pattern";
+                        await _context.SaveChangesAsync(ct);
+                        await ShowInvoicePatternMenuAsync(chatId, userState, ct);
+                    }
                     return;
 
                 case "InvWiz_ItemSearch":
@@ -716,26 +726,70 @@ namespace Invoice.Code
                     var itemTitleQ = data.TryGetValue("ItemTitle", out var itQ) ? itQ : "-";
                     var itemCodeQ = data.TryGetValue("ItemCode", out var icQ) ? icQ : "-";
                     var vatQ = data.TryGetValue("ItemVat", out var vQ) ? vQ : "10";
+                    var itemsInFee = GetWizardItems(data);
+                    var numSuffix = itemsInFee.Count > 0 ? $" (قلم شماره {itemsInFee.Count + 1})" : "";
                     await SendUserMessageAsync(chatId,
-                        $"📦 <b>کالای انتخابی:</b> {HtmlSafe(itemTitleQ)}\n" +
+                        $"📦 <b>کالای انتخابی{numSuffix}:</b> {HtmlSafe(itemTitleQ)}\n" +
                         $"شناسه: <code>{itemCodeQ}</code> | نرخ ارزش افزوده: <b>{vatQ}%</b>\n\n" +
                         "لطفاً <b>تعداد یا مقدار</b> را به صورت عدد وارد فرمایید (مثال: <code>1</code> یا <code>2.5</code>):",
                         GetCancelReplyKeyboard(),
                         ct: ct);
                     return;
 
+                case "InvWiz_ItemRegistered":
+                    var regItems = GetWizardItems(data);
+                    if (regItems.Count > 0)
+                    {
+                        var lastItm = regItems.Last();
+                        regItems.RemoveAt(regItems.Count - 1);
+                        if (regItems.Count > 0)
+                        {
+                            data["ItemsJson"] = JsonSerializer.Serialize(regItems);
+                            data["ItemCode"] = regItems[0].Code;
+                            data["ItemTitle"] = regItems[0].Title;
+                            data["Am"] = regItems[0].Am.ToString(CultureInfo.InvariantCulture);
+                            data["Fee"] = regItems[0].Fee.ToString(CultureInfo.InvariantCulture);
+                            data["ItemVat"] = regItems[0].VatRate.ToString(CultureInfo.InvariantCulture);
+                            data["ItemMu"] = regItems[0].Mu;
+                        }
+                        else
+                        {
+                            data.Remove("ItemsJson");
+                        }
+
+                        data["ItemCode"] = lastItm.Code;
+                        data["ItemTitle"] = lastItm.Title;
+                        data["ItemVat"] = lastItm.VatRate.ToString(CultureInfo.InvariantCulture);
+                        data["ItemMu"] = lastItm.Mu;
+                        data["Am"] = lastItm.Am.ToString(CultureInfo.InvariantCulture);
+                        data["Fee"] = lastItm.Fee.ToString(CultureInfo.InvariantCulture);
+
+                        userState.CurrentStep = "InvWiz_Fee";
+                        userState.StateDataJson = JsonSerializer.Serialize(data);
+                        await _context.SaveChangesAsync(ct);
+                        await ShowFeePromptAsync(chatId, userState, ct);
+                    }
+                    else
+                    {
+                        userState.CurrentStep = "InvWiz_ItemSelect";
+                        userState.StateDataJson = JsonSerializer.Serialize(data);
+                        await _context.SaveChangesAsync(ct);
+                        await ShowItemSelectMenuAsync(chatId, userState, ct);
+                    }
+                    return;
+
                 case "InvWiz_CheckoutType":
-                    userState.CurrentStep = "InvWiz_Fee";
+                    userState.CurrentStep = "InvWiz_ItemRegistered";
                     await _context.SaveChangesAsync(ct);
-                    await ShowFeePromptAsync(chatId, userState, ct);
+                    await ShowItemRegisteredMenuAsync(chatId, userState, data, ct);
                     return;
 
                 case "InvWiz_Confirm":
                     if (data.TryGetValue("BuyerType", out var btConf) && btConf == "consumer")
                     {
-                        userState.CurrentStep = "InvWiz_Fee";
+                        userState.CurrentStep = "InvWiz_ItemRegistered";
                         await _context.SaveChangesAsync(ct);
-                        await ShowFeePromptAsync(chatId, userState, ct);
+                        await ShowItemRegisteredMenuAsync(chatId, userState, data, ct);
                     }
                     else
                     {
@@ -1224,20 +1278,14 @@ namespace Invoice.Code
                         await SendUserMessageAsync(chatId, "❌ مبلغ واحد (فی) باید عددی نامنفی به ریال باشد. لطفاً مجدداً وارد فرمایید:", GetCancelReplyKeyboard(), ct: ct);
                         return;
                     }
-                    data["Fee"] = fee.ToString(CultureInfo.InvariantCulture);
-                    if (data.TryGetValue("BuyerType", out var btForFee) && btForFee == "consumer")
-                    {
-                        data["CheckoutType"] = "1"; // نقدی
-                        userState.CurrentStep = "InvWiz_Confirm";
-                        userState.StateDataJson = JsonSerializer.Serialize(data);
-                        await _context.SaveChangesAsync(ct);
-                        await ShowInvoiceWizardConfirmCardAsync(chatId, userState, ct);
-                        return;
-                    }
-                    userState.CurrentStep = "InvWiz_CheckoutType";
-                    userState.StateDataJson = JsonSerializer.Serialize(data);
-                    await _context.SaveChangesAsync(ct);
-                    await ShowCheckoutTypeMenuAsync(chatId, userState, ct);
+                    await CommitCurrentItemAndShowItemMenuAsync(chatId, userState, data, (long)fee, ct);
+                    return;
+
+                case "InvWiz_ItemRegistered":
+                    await SendUserMessageAsync(chatId,
+                        "⚠️ لطفاً از دکمه‌های شیشه‌ای زیر پیام جهت «➕ افزودن کالای بعدی» یا «➡️ ادامه و تکمیل فاکتور» استفاده فرمایید:",
+                        GetCancelReplyKeyboard(),
+                        ct: ct);
                     return;
 
                 case "Invoice_Cancel_WaitTaxId":
@@ -1796,6 +1844,60 @@ namespace Invoice.Code
             {
                 var feeVal = data.Substring("inv_wiz_fee_default:".Length);
                 await HandleDefaultFeeSelectedAsync(chatId, userState, feeVal, ct);
+                return;
+            }
+
+            // افزودن کالای بعدی به فاکتور
+            if (data == "inv_wiz_add_next_item")
+            {
+                var wizData = string.IsNullOrWhiteSpace(userState.StateDataJson)
+                    ? new Dictionary<string, string>()
+                    : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
+
+                wizData.Remove("ItemCode");
+                wizData.Remove("ItemTitle");
+                wizData.Remove("ItemVat");
+                wizData.Remove("ItemMu");
+                wizData.Remove("DefaultFee");
+                wizData.Remove("Am");
+                wizData.Remove("Fee");
+
+                userState.CurrentStep = "InvWiz_ItemSelect";
+                userState.StateDataJson = JsonSerializer.Serialize(wizData);
+                await _context.SaveChangesAsync(ct);
+                await ShowItemSelectMenuAsync(chatId, userState, ct);
+                return;
+            }
+
+            // ادامه فرآیند بعد از ثبت قلم
+            if (data == "inv_wiz_continue")
+            {
+                var wizData = string.IsNullOrWhiteSpace(userState.StateDataJson)
+                    ? new Dictionary<string, string>()
+                    : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
+
+                if (wizData.TryGetValue("BuyerType", out var bt) && bt == "consumer")
+                {
+                    wizData["CheckoutType"] = "1"; // نقدی
+                    userState.CurrentStep = "InvWiz_Confirm";
+                    userState.StateDataJson = JsonSerializer.Serialize(wizData);
+                    await _context.SaveChangesAsync(ct);
+                    await ShowInvoiceWizardConfirmCardAsync(chatId, userState, ct);
+                }
+                else if (wizData.TryGetValue("CheckoutType", out var setm) && !string.IsNullOrWhiteSpace(setm))
+                {
+                    userState.CurrentStep = "InvWiz_Confirm";
+                    userState.StateDataJson = JsonSerializer.Serialize(wizData);
+                    await _context.SaveChangesAsync(ct);
+                    await ShowInvoiceWizardConfirmCardAsync(chatId, userState, ct);
+                }
+                else
+                {
+                    userState.CurrentStep = "InvWiz_CheckoutType";
+                    userState.StateDataJson = JsonSerializer.Serialize(wizData);
+                    await _context.SaveChangesAsync(ct);
+                    await ShowCheckoutTypeMenuAsync(chatId, userState, ct);
+                }
                 return;
             }
 
@@ -3724,7 +3826,13 @@ namespace Invoice.Code
             buttons.Add(new[] { new { text = "🔍 جستجو یا ورود شناسه ۱۳ رقمی", callback_data = "inv_wiz_item_search_btn" } });
             buttons.Add(new[] { new { text = "🔙 بازگشت", callback_data = "inv_wiz_back" }, new { text = "❌ انصراف", callback_data = "inv_wiz_cancel" } });
 
-            var msg = "📦 <b>مرحله ۳ از ۵: انتخاب کالا یا خدمت</b>\n\n" +
+            var data = string.IsNullOrWhiteSpace(userState.StateDataJson)
+                ? new Dictionary<string, string>()
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
+            var currentItems = GetWizardItems(data);
+            var itemNumSuffix = currentItems.Count > 0 ? $" (قلم شماره {currentItems.Count + 1})" : "";
+
+            var msg = $"📦 <b>مرحله ۳ از ۵: انتخاب کالا یا خدمت{itemNumSuffix}</b>\n\n" +
                       "می‌توانید یکی از کالاهای منتخب زیر را با یک لمس انتخاب کنید یا از دکمه جستجو جهت یافتن سایر شناسه‌ها استفاده نمایید:";
 
             await SendUserMessageAsync(chatId, msg, new { inline_keyboard = buttons.ToArray() }, ct: ct);
@@ -3758,7 +3866,10 @@ namespace Invoice.Code
             userState.StateDataJson = JsonSerializer.Serialize(data);
             await _context.SaveChangesAsync(ct);
 
-            var msg = $"📦 <b>کالای انتخابی:</b> {HtmlSafe(title)}\n" +
+            var currentItems = GetWizardItems(data);
+            var itemNumSuffix = currentItems.Count > 0 ? $" (قلم شماره {currentItems.Count + 1})" : "";
+
+            var msg = $"📦 <b>کالای انتخابی{itemNumSuffix}:</b> {HtmlSafe(title)}\n" +
                       $"شناسه: <code>{cleanCode}</code> | نرخ مالیات ارزش افزوده: <b>{vatRate}%</b>\n\n" +
                       "🔢 لطفاً <b>تعداد یا مقدار</b> را به صورت عدد وارد فرمایید (مثال: <code>1</code> یا <code>2.5</code>):";
 
@@ -3845,7 +3956,10 @@ namespace Invoice.Code
             var itemTitle = data.TryGetValue("ItemTitle", out var it) ? it : "-";
             var am = data.TryGetValue("Am", out var a) ? a : "1";
 
-            var msg = $"📦 <b>کالا:</b> {HtmlSafe(itemTitle)} (تعداد: <b>{am}</b>)\n\n" +
+            var currentItems = GetWizardItems(data);
+            var itemNumSuffix = currentItems.Count > 0 ? $" (قلم شماره {currentItems.Count + 1})" : "";
+
+            var msg = $"📦 <b>کالا{itemNumSuffix}:</b> {HtmlSafe(itemTitle)} (تعداد: <b>{am}</b>)\n\n" +
                       "💰 لطفاً <b>مبلغ واحد (فی)</b> را به ریال وارد نمایید (بدون کاما، مثال: <code>500000</code>):";
 
             if (defaultFee > 0)
@@ -3869,25 +3983,121 @@ namespace Invoice.Code
                 ? new Dictionary<string, string>()
                 : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
 
-            data["Fee"] = feeVal;
+            long.TryParse(feeVal, NumberStyles.Any, CultureInfo.InvariantCulture, out var fee);
+            await CommitCurrentItemAndShowItemMenuAsync(chatId, userState, data, fee, ct);
+        }
 
-            if (data.TryGetValue("BuyerType", out var bt) && bt == "consumer")
+        private async Task CommitCurrentItemAndShowItemMenuAsync(string chatId, BaleUserState userState, Dictionary<string, string> data, long fee, CancellationToken ct)
+        {
+            var items = GetWizardItems(data);
+
+            var itemCode = data.TryGetValue("ItemCode", out var ic) ? ic : "";
+            var itemTitle = data.TryGetValue("ItemTitle", out var it) ? it : itemCode;
+            decimal.TryParse(data.TryGetValue("Am", out var aStr) ? aStr : "1", NumberStyles.Any, CultureInfo.InvariantCulture, out var am);
+            int.TryParse(data.TryGetValue("ItemVat", out var vStr) ? vStr : "10", NumberStyles.Any, CultureInfo.InvariantCulture, out var vatRate);
+            var mu = data.TryGetValue("ItemMu", out var m) ? m : "162";
+
+            var newItem = new WizardInvoiceItem
             {
-                data["CheckoutType"] = "1"; // نقدی
-                userState.CurrentStep = "InvWiz_Confirm";
-                userState.StateDataJson = JsonSerializer.Serialize(data);
-                await _context.SaveChangesAsync(ct);
+                Code = itemCode,
+                Title = itemTitle,
+                Am = am > 0 ? am : 1,
+                Fee = fee,
+                VatRate = vatRate,
+                Mu = mu
+            };
 
-                await ShowInvoiceWizardConfirmCardAsync(chatId, userState, ct);
-            }
-            else
+            items.Add(newItem);
+
+            data["ItemsJson"] = JsonSerializer.Serialize(items);
+            // سازگاری با کلیدهای قدیمی
+            data["ItemCode"] = items[0].Code;
+            data["ItemTitle"] = items[0].Title;
+            data["ItemVat"] = items[0].VatRate.ToString(CultureInfo.InvariantCulture);
+            data["ItemMu"] = items[0].Mu;
+            data["Am"] = items[0].Am.ToString(CultureInfo.InvariantCulture);
+            data["Fee"] = items[0].Fee.ToString(CultureInfo.InvariantCulture);
+
+            userState.CurrentStep = "InvWiz_ItemRegistered";
+            userState.StateDataJson = JsonSerializer.Serialize(data);
+            await _context.SaveChangesAsync(ct);
+
+            await ShowItemRegisteredMenuAsync(chatId, userState, data, ct);
+        }
+
+        private async Task ShowItemRegisteredMenuAsync(string chatId, BaleUserState userState, Dictionary<string, string> data, CancellationToken ct)
+        {
+            var items = GetWizardItems(data);
+
+            long totalSub = 0;
+            long totalVat = 0;
+
+            var itemsListText = new StringBuilder();
+            for (int i = 0; i < items.Count; i++)
             {
-                userState.CurrentStep = "InvWiz_CheckoutType";
-                userState.StateDataJson = JsonSerializer.Serialize(data);
-                await _context.SaveChangesAsync(ct);
+                var itm = items[i];
+                long itemSub = (long)(itm.Am * itm.Fee);
+                long itemVat = (long)(itemSub * itm.VatRate / 100.0);
+                totalSub += itemSub;
+                totalVat += itemVat;
 
-                await ShowCheckoutTypeMenuAsync(chatId, userState, ct);
+                itemsListText.AppendLine($"▫️ <b>{i + 1}. {HtmlSafe(itm.Title)}</b>\n" +
+                                         $"    تعداد: <b>{itm.Am}</b> × فی: <b>{itm.Fee:N0} ریال</b> | مبلغ: <b>{itemSub:N0} ریال</b> (ارزش افزوده: {itm.VatRate}%)");
             }
+
+            long grandTotal = totalSub + totalVat;
+
+            var card = $"✅ <b>قلم کالا/خدمت با موفقیت به پیش‌نویس فاکتور اضافه شد.</b>\n\n" +
+                       $"📋 <b>اقلام ثبت‌شده تا این لحظه ({items.Count} قلم):</b>\n" +
+                       itemsListText.ToString() + "\n" +
+                       $"💵 <b>مجموع مبلغ کالاها:</b> {totalSub:N0} ریال\n" +
+                       $"📊 <b>مجموع مالیات ارزش افزوده:</b> {totalVat:N0} ریال\n" +
+                       $"💎 <b>مبلغ کل صورتحساب:</b> <b>{grandTotal:N0} ریال</b>\n\n" +
+                       "جهت افزودن کالاهای بیشتر یا تکمیل و ارسال فاکتور، یکی از گزینه‌های زیر را انتخاب نمایید:";
+
+            var buttons = new[]
+            {
+                new[] { new { text = "➕ افزودن کالای بعدی", callback_data = "inv_wiz_add_next_item" } },
+                new[] { new { text = "➡️ ادامه و تکمیل فاکتور", callback_data = "inv_wiz_continue" } },
+                new[] { new { text = "🔙 بازگشت و ویرایش قلم آخر", callback_data = "inv_wiz_back" }, new { text = "❌ انصراف", callback_data = "inv_wiz_cancel" } }
+            };
+
+            await SendUserMessageAsync(chatId, card, new { inline_keyboard = buttons }, ct: ct);
+        }
+
+        private static List<WizardInvoiceItem> GetWizardItems(Dictionary<string, string> data)
+        {
+            if (data.TryGetValue("ItemsJson", out var ij) && !string.IsNullOrWhiteSpace(ij))
+            {
+                try
+                {
+                    var items = JsonSerializer.Deserialize<List<WizardInvoiceItem>>(ij);
+                    if (items != null && items.Count > 0) return items;
+                }
+                catch { }
+            }
+
+            var list = new List<WizardInvoiceItem>();
+            if (data.TryGetValue("ItemCode", out var code) && !string.IsNullOrWhiteSpace(code) &&
+                data.TryGetValue("Fee", out var fStr) && long.TryParse(fStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var fee))
+            {
+                decimal.TryParse(data.TryGetValue("Am", out var aStr) ? aStr : "1", NumberStyles.Any, CultureInfo.InvariantCulture, out var am);
+                int.TryParse(data.TryGetValue("ItemVat", out var vStr) ? vStr : "10", NumberStyles.Any, CultureInfo.InvariantCulture, out var vatRate);
+                var title = data.TryGetValue("ItemTitle", out var it) ? it : code;
+                var mu = data.TryGetValue("ItemMu", out var m) ? m : "162";
+
+                list.Add(new WizardInvoiceItem
+                {
+                    Code = code,
+                    Title = title,
+                    Am = am > 0 ? am : 1,
+                    Fee = fee,
+                    VatRate = vatRate,
+                    Mu = mu
+                });
+            }
+
+            return list;
         }
 
         private async Task ShowCheckoutTypeMenuAsync(string chatId, BaleUserState userState, CancellationToken ct)
@@ -3942,18 +4152,64 @@ namespace Invoice.Code
             var patternIdStr = data.TryGetValue("InvoicePattern", out var pStr) ? pStr : "1";
             var patternDesc = GetInvoicePatternDescription(patternIdStr);
 
-            var itemTitle = data.TryGetValue("ItemTitle", out var it) ? it : "-";
-            var itemCode = data.TryGetValue("ItemCode", out var ic) ? ic : "-";
+            var currentItems = GetWizardItems(data);
+            if (currentItems.Count == 0)
+            {
+                var itemTitle = data.TryGetValue("ItemTitle", out var it) ? it : "-";
+                var itemCode = data.TryGetValue("ItemCode", out var ic) ? ic : "-";
+                decimal.TryParse(data.TryGetValue("Am", out var aStr) ? aStr : "1", NumberStyles.Any, CultureInfo.InvariantCulture, out var am);
+                long.TryParse(data.TryGetValue("Fee", out var fStr) ? fStr : "0", NumberStyles.Any, CultureInfo.InvariantCulture, out var fee);
+                int.TryParse(data.TryGetValue("ItemVat", out var vStr) ? vStr : "10", NumberStyles.Any, CultureInfo.InvariantCulture, out var vatRate);
+                var mu = data.TryGetValue("ItemMu", out var m) ? m : "162";
 
-            decimal.TryParse(data.TryGetValue("Am", out var aStr) ? aStr : "1", NumberStyles.Any, CultureInfo.InvariantCulture, out var am);
-            long.TryParse(data.TryGetValue("Fee", out var fStr) ? fStr : "0", NumberStyles.Any, CultureInfo.InvariantCulture, out var fee);
-            int.TryParse(data.TryGetValue("ItemVat", out var vStr) ? vStr : "10", NumberStyles.Any, CultureInfo.InvariantCulture, out var vatRate);
+                currentItems.Add(new WizardInvoiceItem
+                {
+                    Code = itemCode,
+                    Title = itemTitle,
+                    Am = am > 0 ? am : 1,
+                    Fee = fee,
+                    VatRate = vatRate,
+                    Mu = mu
+                });
+            }
+
+            long totalSub = 0;
+            long totalVat = 0;
+            var itemsSummary = new StringBuilder();
+
+            if (currentItems.Count == 1)
+            {
+                var itm = currentItems[0];
+                long itemSub = (long)(itm.Am * itm.Fee);
+                long itemVat = (long)(itemSub * itm.VatRate / 100.0);
+                totalSub = itemSub;
+                totalVat = itemVat;
+
+                itemsSummary.AppendLine($"📦 <b>کالا/خدمت:</b> {HtmlSafe(itm.Title)}");
+                itemsSummary.AppendLine($"🔢 <b>تعداد/مقدار:</b> <b>{itm.Am}</b> | <b>فی:</b> <b>{itm.Fee:N0} ریال</b>");
+                itemsSummary.AppendLine($"💵 <b>مبلغ کل کالا:</b> {itemSub:N0} ریال");
+                itemsSummary.AppendLine($"📊 <b>مالیات ارزش افزوده ({itm.VatRate}%):</b> {itemVat:N0} ریال");
+            }
+            else
+            {
+                itemsSummary.AppendLine($"📦 <b>اقلام صورتحساب ({currentItems.Count} قلم):</b>");
+                for (int i = 0; i < currentItems.Count; i++)
+                {
+                    var itm = currentItems[i];
+                    long itemSub = (long)(itm.Am * itm.Fee);
+                    long itemVat = (long)(itemSub * itm.VatRate / 100.0);
+                    totalSub += itemSub;
+                    totalVat += itemVat;
+
+                    itemsSummary.AppendLine($"• {i + 1}. {HtmlSafe(itm.Title)} ({itm.Am} × {itm.Fee:N0} ریال | م.ارزش افزوده {itm.VatRate}%)");
+                }
+                itemsSummary.AppendLine($"💵 <b>مجموع مبلغ کالاها:</b> {totalSub:N0} ریال");
+                itemsSummary.AppendLine($"📊 <b>مجموع مالیات ارزش افزوده:</b> {totalVat:N0} ریال");
+            }
+
+            long grandTotal = totalSub + totalVat;
+
             var setmStr = data.TryGetValue("CheckoutType", out var sStr) ? sStr : "1";
-
-            long subTotal = (long)(am * fee);
-            long vatAmount = (long)(subTotal * vatRate / 100.0);
-            long grandTotal = subTotal + vatAmount;
-
             var buyerDesc = buyerType switch
             {
                 "legal" => $"شخص حقوقی (شناسه ملی: <code>{buyerId}</code>)",
@@ -3976,24 +4232,22 @@ namespace Invoice.Code
                        $"🏢 <b>صادرکننده:</b> {HtmlSafe(effectiveProfile.DisplayName)}\n" +
                        $"📅 <b>تاریخ صورتحساب:</b> <b>{invoiceDate}</b>\n" +
                        $"📑 <b>الگوی صورتحساب:</b> <b>{patternDesc}</b>\n" +
-                       $"👤 <b>خریدار:</b> {buyerDesc}\n" +
-                       $"📦 <b>کالا/خدمت:</b> {HtmlSafe(itemTitle)}\n" +
-                       $"🔢 <b>تعداد/مقدار:</b> <b>{am}</b> | <b>فی:</b> <b>{fee:N0} ریال</b>\n" +
-                       $"💵 <b>مبلغ کل کالا:</b> {subTotal:N0} ریال\n" +
-                       $"📊 <b>مالیات ارزش افزوده ({vatRate}%):</b> {vatAmount:N0} ریال\n" +
-                       $"💎 <b>مبلغ قابل پرداخت:</b> <b>{grandTotal:N0} ریال</b>\n" +
+                       $"👤 <b>خریدار:</b> {buyerDesc}\n\n" +
+                       itemsSummary.ToString() +
+                       $"\n💎 <b>مبلغ کل قابل پرداخت:</b> <b>{grandTotal:N0} ریال</b>\n" +
                        $"💳 <b>روش تسویه:</b> {setmDesc}\n" +
                        $"🏷️ <b>هزینه ارسال:</b> {costDesc}\n\n" +
                        "جهت امضا و ارسال مستقیم به سامانه مودیان، دکمه تایید را لمس نمایید:";
 
-            var buttons = new[]
+            var buttons = new List<object[]>
             {
                 new[] { new { text = "🚀 تایید و ارسال به سامانه مودیان", callback_data = "inv_wiz_send" } },
+                new[] { new { text = "➕ افزودن کالای دیگر به فاکتور", callback_data = "inv_wiz_add_next_item" } },
                 new[] { new { text = "🔙 ویرایش و بازگشت", callback_data = "inv_wiz_back" } },
                 new[] { new { text = "❌ انصراف", callback_data = "inv_wiz_cancel" } }
             };
 
-            await SendUserMessageAsync(chatId, card, new { inline_keyboard = buttons }, ct: ct);
+            await SendUserMessageAsync(chatId, card, new { inline_keyboard = buttons.ToArray() }, ct: ct);
         }
 
         private async Task SendSingleInvoiceWizardAsync(string chatId, BaleUserState userState, CancellationToken ct)
@@ -4019,10 +4273,6 @@ namespace Invoice.Code
             var cleanBuyerId = !string.IsNullOrWhiteSpace(rawBuyerId) ? Utils.ConvertPersianNumberToEnglish(rawBuyerId.Trim()) : null;
             var cleanBuyerTin = !string.IsNullOrWhiteSpace(rawBuyerTin) ? Utils.ConvertPersianNumberToEnglish(rawBuyerTin.Trim()) : null;
 
-            var itemTitle = data.TryGetValue("ItemTitle", out var it) ? it : "-";
-            var itemCode = data.TryGetValue("ItemCode", out var ic) ? ic : "-";
-            var mu = data.TryGetValue("ItemMu", out var m) ? m : "162";
-
             var invoiceDate = data.TryGetValue("InvoiceDate", out var idate) && !string.IsNullOrWhiteSpace(idate)
                 ? idate
                 : (MyDate.GetPersianDate(DateTime.Now)?.ToShortDateString() ?? DateTime.Now.ToString("yyyy/MM/dd"));
@@ -4034,11 +4284,39 @@ namespace Invoice.Code
                 invoicePattern = (InvoicePattern)patVal;
             }
 
-            decimal.TryParse(data.TryGetValue("Am", out var aStr) ? aStr : "1", NumberStyles.Any, CultureInfo.InvariantCulture, out var am);
-            long.TryParse(data.TryGetValue("Fee", out var fStr) ? fStr : "0", NumberStyles.Any, CultureInfo.InvariantCulture, out var fee);
-            int.TryParse(data.TryGetValue("ItemVat", out var vStr) ? vStr : "10", NumberStyles.Any, CultureInfo.InvariantCulture, out var vatRate);
-            var setmStr = data.TryGetValue("CheckoutType", out var sStr) ? sStr : "1";
+            var currentItems = GetWizardItems(data);
+            if (currentItems.Count == 0)
+            {
+                var itemTitle = data.TryGetValue("ItemTitle", out var it) ? it : "-";
+                var itemCode = data.TryGetValue("ItemCode", out var ic) ? ic : "-";
+                var mu = data.TryGetValue("ItemMu", out var m) ? m : "162";
+                decimal.TryParse(data.TryGetValue("Am", out var aStr) ? aStr : "1", NumberStyles.Any, CultureInfo.InvariantCulture, out var am);
+                long.TryParse(data.TryGetValue("Fee", out var fStr) ? fStr : "0", NumberStyles.Any, CultureInfo.InvariantCulture, out var fee);
+                int.TryParse(data.TryGetValue("ItemVat", out var vStr) ? vStr : "10", NumberStyles.Any, CultureInfo.InvariantCulture, out var vatRate);
 
+                currentItems.Add(new WizardInvoiceItem
+                {
+                    Code = itemCode,
+                    Title = itemTitle,
+                    Am = am > 0 ? am : 1,
+                    Fee = fee,
+                    VatRate = vatRate,
+                    Mu = mu
+                });
+            }
+
+            long totalSub = 0;
+            long totalVat = 0;
+            foreach (var itm in currentItems)
+            {
+                long itemSub = (long)(itm.Am * itm.Fee);
+                long itemVat = (long)(itemSub * itm.VatRate / 100.0);
+                totalSub += itemSub;
+                totalVat += itemVat;
+            }
+            long grandTotal = totalSub + totalVat;
+
+            var setmStr = data.TryGetValue("CheckoutType", out var sStr) ? sStr : "1";
             var isSubscribed = user.ExpireDate > DateTime.Now;
             var perInvoiceCost = Utils.GetPerInvoiceCost(user, _context);
 
@@ -4053,12 +4331,6 @@ namespace Invoice.Code
                     ct: ct);
                 return;
             }
-
-            var vra = VatRate.درصد_10;
-            if (vatRate == 0) vra = VatRate.معاف;
-            else if (vatRate == 9) vra = VatRate.درصد_9;
-            else if (vatRate == 10) vra = VatRate.درصد_10;
-            else if (vatRate == 16) vra = VatRate.درصد_16;
 
             var setm = setmStr switch
             {
@@ -4109,16 +4381,25 @@ namespace Invoice.Code
                 Indatim = MyDate.GetEnglishDate(invoiceDate) ?? DateTime.Now
             };
 
-            invoice.InvoiceItems.Add(new InvoiceItem
+            foreach (var itm in currentItems)
             {
-                Sstid = itemCode,
-                Sstt = itemTitle,
-                Am = am,
-                Fee = fee,
-                Dis = 0,
-                Vra = vra,
-                Mu = mu
-            });
+                var vra = VatRate.درصد_10;
+                if (itm.VatRate == 0) vra = VatRate.معاف;
+                else if (itm.VatRate == 9) vra = VatRate.درصد_9;
+                else if (itm.VatRate == 10) vra = VatRate.درصد_10;
+                else if (itm.VatRate == 16) vra = VatRate.درصد_16;
+
+                invoice.InvoiceItems.Add(new InvoiceItem
+                {
+                    Sstid = itm.Code,
+                    Sstt = itm.Title,
+                    Am = itm.Am,
+                    Fee = itm.Fee,
+                    Dis = 0,
+                    Vra = vra,
+                    Mu = itm.Mu
+                });
+            }
 
             _context.Invoices.Add(invoice);
             await _context.SaveChangesAsync(ct);
@@ -4138,8 +4419,6 @@ namespace Invoice.Code
             await SendUserMessageAsync(chatId, queueMsg, replyMarkup: GetMainUserReplyKeyboard(true, isReseller: isReseller), ct: ct);
 
             var invId = invoice.Id;
-            var subTotal = (long)(am * fee);
-            var grandTotal = subTotal + (long)(subTotal * vatRate / 100.0);
 
             if (_scopeFactory != null)
             {
@@ -4405,6 +4684,127 @@ namespace Invoice.Code
             _context.Invoices.Add(cancelInvoice);
             await _context.SaveChangesAsync(ct);
 
+            if (_scopeFactory != null)
+            {
+                // بازگشت آنی به منوی اصلی و اجرای ارسال ابطال در پس‌زمینه برای جلوگیری از قفل شدن ربات
+                await SendUserMessageAsync(chatId,
+                    "⏳ <b>درخواست صدور صورتحساب ابطالی ثبت گردید</b>\n\n" +
+                    $"• شماره مالیاتی مرجع: <code>{targetTaxId}</code>\n\n" +
+                    "ارسال صورتحساب ابطالی به سامانه مودیان در پس‌زمینه آغاز شد. نتیجه بلافاصله پس از پردازش سامانه از همین طریق به اطلاع شما خواهد رسید.",
+                    ct: ct);
+                await ShowMainMenuAsync(chatId, ct);
+
+                var cancelInvId = cancelInvoice.Id;
+                var refInvId = refInvoice?.Id;
+                var uname = user.Username;
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await ExecuteSendCancelInvoiceAsync(_scopeFactory, cancelInvId, refInvId, targetTaxId, uname, chatId);
+                    }
+                    catch (Exception exBg)
+                    {
+                        _logger.LogError(exBg, "خطا در پردازش پس‌زمینه ابطال فاکتور مرجع {TargetTaxId}", targetTaxId);
+                    }
+                });
+            }
+            else
+            {
+                await ExecuteSendCancelInvoiceDirectAsync(cancelInvoice, refInvoice, targetTaxId, user, chatId, ct);
+            }
+        }
+
+        private static async Task ExecuteSendCancelInvoiceAsync(
+            IServiceScopeFactory scopeFactory,
+            int cancelInvoiceId,
+            int? refInvoiceId,
+            string targetTaxId,
+            string username,
+            string chatId)
+        {
+            using var scope = scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<DataContext>();
+            var sender = scope.ServiceProvider.GetRequiredService<IInvoiceSenderService>();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<BaleUserBotService>>();
+            var activityLogger = scope.ServiceProvider.GetRequiredService<IUserActivityLogger>();
+            var botService = scope.ServiceProvider.GetRequiredService<IBaleUserBotService>();
+
+            var cancelInvoice = await db.Invoices
+                .Include(i => i.Profile)
+                .FirstOrDefaultAsync(i => i.Id == cancelInvoiceId);
+
+            if (cancelInvoice == null) return;
+
+            if (cancelInvoice.Profile == null && cancelInvoice.ProfileId.HasValue)
+            {
+                cancelInvoice.Profile = await db.Profiles.FirstOrDefaultAsync(p => p.Id == cancelInvoice.ProfileId.Value);
+            }
+
+            Invoices.Models.Invoice? refInvoice = null;
+            if (refInvoiceId.HasValue)
+            {
+                refInvoice = await db.Invoices.FirstOrDefaultAsync(i => i.Id == refInvoiceId.Value);
+            }
+
+            try
+            {
+                var response = sender.SendInvoice(cancelInvoice);
+                cancelInvoice.Status = response.Status;
+                cancelInvoice.ReferenceCode = response.RefId;
+                cancelInvoice.ResponseMessage = response.Response;
+                cancelInvoice.UID = response.UID;
+                cancelInvoice.Taxid = response.TaxId;
+                cancelInvoice.SendDate = DateTime.Now;
+
+                if (response.Status == InvoiceStatus.موفق)
+                {
+                    if (refInvoice != null)
+                    {
+                        refInvoice.Status = InvoiceStatus.ابطال_شده;
+                        refInvoice.ReferalId = cancelInvoice.Id;
+                    }
+
+                    await db.SaveChangesAsync();
+                    await activityLogger.LogInvoiceActionAsync("ابطال فاکتور از بله", cancelInvoice.Id, cancelInvoice.Taxid, $"ابطال فاکتور مرجع {targetTaxId} توسط {username} در بله");
+
+                    var successMsg = "🎉 <b>صورتحساب ابطالی با موفقیت در سامانه مودیان ثبت گردید!</b>\n\n" +
+                                     $"• شناسه مالیاتی ابطالی:\n<code>{cancelInvoice.Taxid}</code>\n\n" +
+                                     $"• کد رهگیری: <code>{cancelInvoice.ReferenceCode ?? cancelInvoice.UID ?? "-"}</code>\n" +
+                                     $"• فاکتور مرجع: <code>{targetTaxId}</code>\n" +
+                                     $"• وضعیت فاکتور مرجع: <b>ابطال‌شده</b>\n" +
+                                     "• هزینه کسرشده: <b>۰ ریال (رایگان)</b>";
+
+                    await botService.SendUserMessageAsync(chatId, successMsg);
+                }
+                else
+                {
+                    await db.SaveChangesAsync();
+                    var errMsg = $"❌ <b>خطا در ابطال صورتحساب</b>\n\n" +
+                                 $"علت خطا: {HtmlSafe(response.Response ?? "پاسخ ناموفق از سامانه مودیان")}\n\n" +
+                                 "لطفاً از صحت شماره مالیاتی اطمینان حاصل کرده و مجدداً تلاش فرمایید.";
+                    await botService.SendUserMessageAsync(chatId, errMsg);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "استثنا در ارسال صورتحساب ابطالی به مودیان");
+                cancelInvoice.Status = InvoiceStatus.خطا_در_ارسال;
+                await db.SaveChangesAsync();
+
+                await botService.SendUserMessageAsync(chatId, "❌ خطا در ارسال فاکتور ابطالی: " + ex.Message);
+            }
+        }
+
+        private async Task ExecuteSendCancelInvoiceDirectAsync(
+            Invoices.Models.Invoice cancelInvoice,
+            Invoices.Models.Invoice? refInvoice,
+            string targetTaxId,
+            User user,
+            string chatId,
+            CancellationToken ct)
+        {
             try
             {
                 var response = _invoiceSender.SendInvoice(cancelInvoice);
@@ -4458,5 +4858,15 @@ namespace Invoice.Code
         }
 
         #endregion
+    }
+
+    public class WizardInvoiceItem
+    {
+        public string Code { get; set; } = "";
+        public string Title { get; set; } = "";
+        public decimal Am { get; set; } = 1;
+        public long Fee { get; set; } = 0;
+        public int VatRate { get; set; } = 10;
+        public string Mu { get; set; } = "162";
     }
 }

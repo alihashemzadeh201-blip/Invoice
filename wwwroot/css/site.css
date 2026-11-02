@@ -511,7 +511,8 @@ body {
     color: #a0aec0;
 }
 
-.sidebar-open .menu-arrow {
+.sidebar-open .menu-arrow,
+.sidebar.mobile-open .menu-arrow {
     opacity: 1;
 }
 
@@ -602,7 +603,8 @@ body {
     transition: opacity 0.2s ease;
 }
 
-.sidebar-open .submenu-text {
+.sidebar-open .submenu-text,
+.sidebar.mobile-open .submenu-text {
     opacity: 1;
 }
 
@@ -1238,8 +1240,15 @@ body {
 
         .sidebar .logo-text,
         .sidebar .menu-text,
+        .sidebar .submenu-text,
+        .sidebar .menu-arrow,
         .sidebar .user-info {
-            opacity: 1;
+            opacity: 1 !important;
+        }
+
+        .sidebar .submenu-link {
+            padding: 9px 12px;
+            font-size: 0.95rem;
         }
 
     .main-content {
