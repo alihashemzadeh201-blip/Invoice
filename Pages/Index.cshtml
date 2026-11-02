@@ -1,9 +1,10 @@
 ﻿@page
 @model IndexModel
+@inject Invoice.Code.ISelectedProfile profileService
 @{
     ViewBag.Description = "این سامانه در راستای ارائه خدمات الکترونیکی مالیاتی ایجاد شده است. مودیان محترمی که موظف به ثبت اطلاعات فروش خود و صدور فاکتور الکترونیکی می باشند، می‌توانند  نسبت به صدور فاکتور و ارسال اطلاعات فروش خود ، از طریق این سامانه به سازمان امور مالیاتی اقدام کنند.";
     ViewBag.KeyWords = "صدور فاکتور الکترونیکی , سامانه مودیان , شناسه یکتای حافظه مالیاتی , کلید خصوصی , کلید عمومی , کارپوشه مودیان , اداره امورمالیاتی , مالیات , صدور فاکتور , ثبت فروش";
-    ViewBag.Title = "صدور صورتحساب الکترونیکی";
+    ViewBag.Title = "پیشخوان سامانه مودیان";
 }
 
 <div class="text-center mt-4">
@@ -54,64 +55,173 @@
     }
     else
     {
-        <!-- داشبورد مدیریت فاکتورها -->
-        <div class="dashboard-container mt-5 text-end text-column">
-            <h4 class="mb-4 text-primary"><i class="fa fa-tachometer-alt ms-2"></i> داشبورد وضعیت فاکتورها</h4>
-            
-            <div class="row mb-4">
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="card bg-primary text-white text-center p-3 rounded shadow-sm h-100">
-                        <h6>کل فاکتورها</h6>
-                        <h3 class="mb-0">@Model.TotalInvoices</h3>
+        <!-- داشبورد نئوبانک و خدمات مالی مودیان -->
+        <div class="fintech-dashboard text-end mt-2">
+            <!-- ۱. کارت بانکی دیجیتال مودی -->
+            <div class="fintech-bank-card">
+                <div class="fintech-card-header">
+                    <div class="fintech-card-brand">
+                        <i class="fas fa-shield-alt text-warning me-2"></i> کارت حساب سامانه مودیان
                     </div>
+                    <div class="fintech-card-chip"></div>
                 </div>
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="card bg-success text-white text-center p-3 rounded shadow-sm h-100">
-                        <h6>ارسال موفق</h6>
-                        <h3 class="mb-0">@Model.SuccessInvoices</h3>
+
+                <div class="fintech-card-balance-label">موجودی کیف پول و اعتبار فاکتور</div>
+                <div class="fintech-card-balance">
+                    @(Model.Vallet.HasValue ? Model.Vallet.Value.ToString("N0") : "0")
+                    <span>ریال</span>
+                </div>
+
+                <div class="fintech-card-footer">
+                    <div>
+                        <div class="fintech-card-holder-label">صاحب پرونده / مودی</div>
+                        <div class="fintech-card-holder-name">
+                            @(profileService.Profile?.DisplayName ?? User.Identity.Name)
+                        </div>
                     </div>
-                </div>
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="card bg-danger text-white text-center p-3 rounded shadow-sm h-100">
-                        <h6>دارای خطا</h6>
-                        <h3 class="mb-0">@Model.FailedInvoices</h3>
-                    </div>
-                </div>
-                <div class="col-md-3 col-6 mb-3">
-                    <div class="card bg-warning text-dark text-center p-3 rounded shadow-sm h-100">
-                        <h6>در انتظار ارسال</h6>
-                        <h3 class="mb-0">@Model.PendingInvoices</h3>
+                    <div class="d-flex gap-2">
+                        <a href="/Credit/Vallet" class="fintech-copy-btn text-decoration-none">
+                            <i class="fas fa-plus-circle me-1"></i> شارژ کیف پول
+                        </a>
+                        <a href="/Credit/CreditRequest" class="fintech-copy-btn text-decoration-none">
+                            <i class="fas fa-history me-1"></i> تمدید اشتراک
+                        </a>
                     </div>
                 </div>
             </div>
 
-            <div class="row mb-4">
+            <!-- ۲. کاشی‌های شیشه‌ای دسترسی سریع (Glass Tiles Grid) -->
+            <h5 class="glass-section-title">
+                <i class="fas fa-th-large text-primary"></i> دسترسی سریع و عملیات بانکی
+            </h5>
+            <div class="glass-tile-grid">
+                <a href="/InvoiceManage/CreateHeader" class="glass-tile tile-blue">
+                    <div class="tile-icon">
+                        <i class="fas fa-plus"></i>
+                    </div>
+                    <div class="tile-title">
+                        <span>صدور فاکتور جدید</span>
+                    </div>
+                    <p class="tile-desc">ثبت و ارسال سریع فاکتور فروش الکترونیکی</p>
+                </a>
+
+                <a href="/InvoiceManage/Index" class="glass-tile tile-violet">
+                    <div class="tile-icon">
+                        <i class="fas fa-file-invoice-dollar"></i>
+                    </div>
+                    <div class="tile-title">
+                        <span>لیست فاکتورها</span>
+                        @if (Model.TotalInvoices > 0)
+                        {
+                            <span class="tile-badge bg-primary text-white">@Model.TotalInvoices</span>
+                        }
+                    </div>
+                    <p class="tile-desc">مشاهده وضعیت استعلام و سوابق ارسال</p>
+                </a>
+
+                <a href="/InvoiceManage/ImportGroupFactor" class="glass-tile tile-cyan">
+                    <div class="tile-icon">
+                        <i class="fas fa-file-excel"></i>
+                    </div>
+                    <div class="tile-title">
+                        <span>ارسال گروهی (اکسل)</span>
+                    </div>
+                    <p class="tile-desc">بارگذاری و ثبت دسته‌ای فاکتورها با فایل اکسل</p>
+                </a>
+
+                <a href="/Stuff/Index" class="glass-tile tile-amber">
+                    <div class="tile-icon">
+                        <i class="fas fa-boxes"></i>
+                    </div>
+                    <div class="tile-title">
+                        <span>کالا و خدمات</span>
+                    </div>
+                    <p class="tile-desc">مدیریت کدهای مالیاتی و کالاهای منتخب</p>
+                </a>
+
+                <a href="/Credit/Vallet" class="glass-tile tile-green">
+                    <div class="tile-icon">
+                        <i class="fas fa-wallet"></i>
+                    </div>
+                    <div class="tile-title">
+                        <span>کیف پول و پرداخت</span>
+                    </div>
+                    <p class="tile-desc">ثبت فیش واریزی و مشاهده تراکنش‌های مالی</p>
+                </a>
+
+                <a href="/Account/UserProfile" class="glass-tile tile-dark">
+                    <div class="tile-icon">
+                        <i class="fas fa-id-card"></i>
+                    </div>
+                    <div class="tile-title">
+                        <span>پروفایل و کلیدها</span>
+                    </div>
+                    <p class="tile-desc">تنظیم کلید خصوصی، شناسه حافظه و مشخصات مودی</p>
+                </a>
+            </div>
+
+            <!-- ۳. کارت‌های آمار شیشه‌ای (Glass Stat Cards) -->
+            <h5 class="glass-section-title mt-4">
+                <i class="fas fa-chart-pie text-success"></i> آمار وضعیت ارسال فاکتورها
+            </h5>
+            <div class="glass-stat-grid">
+                <div class="glass-stat-card">
+                    <div class="glass-stat-header">
+                        <span class="glass-stat-title">کل فاکتورها</span>
+                        <div class="glass-stat-icon-wrap" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">
+                            <i class="fas fa-layer-group"></i>
+                        </div>
+                    </div>
+                    <div class="glass-stat-val">@Model.TotalInvoices</div>
+                </div>
+
+                <div class="glass-stat-card">
+                    <div class="glass-stat-header">
+                        <span class="glass-stat-title">ارسال موفق</span>
+                        <div class="glass-stat-icon-wrap" style="background: linear-gradient(135deg, #10b981, #059669);">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                    </div>
+                    <div class="glass-stat-val text-success">@Model.SuccessInvoices</div>
+                </div>
+
+                <div class="glass-stat-card">
+                    <div class="glass-stat-header">
+                        <span class="glass-stat-title">دارای خطا</span>
+                        <div class="glass-stat-icon-wrap" style="background: linear-gradient(135deg, #f43f5e, #e11d48);">
+                            <i class="fas fa-times-circle"></i>
+                        </div>
+                    </div>
+                    <div class="glass-stat-val text-danger">@Model.FailedInvoices</div>
+                </div>
+
+                <div class="glass-stat-card">
+                    <div class="glass-stat-header">
+                        <span class="glass-stat-title">در انتظار ارسال</span>
+                        <div class="glass-stat-icon-wrap" style="background: linear-gradient(135deg, #f59e0b, #d97706);">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                    </div>
+                    <div class="glass-stat-val text-warning">@Model.PendingInvoices</div>
+                </div>
+            </div>
+
+            <!-- ۴. نمودارهای وضعیت در پنل شیشه‌ای -->
+            <div class="row">
                 <div class="col-md-6 mb-4">
-                    <div class="card shadow-sm p-3 h-100">
-                        <h5 class="text-center mb-3">وضعیت ارسال فاکتورها</h5>
+                    <div class="glass-card-surface h-100 mb-0">
+                        <h6 class="text-center mb-3 fw-bold text-dark">
+                            <i class="fas fa-chart-pie me-1 text-primary"></i> وضعیت ارسال فاکتورها
+                        </h6>
                         <canvas id="statusChart"></canvas>
                     </div>
                 </div>
                 <div class="col-md-6 mb-4">
-                    <div class="card shadow-sm p-3 h-100">
-                        <h5 class="text-center mb-3">نوع فاکتورها</h5>
+                    <div class="glass-card-surface h-100 mb-0">
+                        <h6 class="text-center mb-3 fw-bold text-dark">
+                            <i class="fas fa-chart-pie me-1 text-info"></i> دسته‌بندی موضوعی فاکتورها
+                        </h6>
                         <canvas id="topicChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <hr />
-            
-            <div class="row mt-4 align-items-center">
-                <div class="col-md-6 text-center text-md-start mb-3 mb-md-0">
-                    <span class="fs-5">موجودی کیف پول شما: </span>
-                    <span class="strong text-success fs-4 me-2">@(Model.Vallet.HasValue ? Model.Vallet.Value.ToString("N0") : "0") ریال</span>
-                </div>
-                <div class="col-md-6">
-                    <div class="d-flex gap-2 justify-content-center justify-content-md-end flex-wrap">
-                        <a class="btn btn-primary" href="/invoicemanage/createheader"><i class="fa fa-plus ms-1"></i> فاکتور جدید</a>
-                        <a class="btn btn-info text-white" asp-page="/credit/vallet"><i class="fa fa-wallet ms-1"></i> کیف پول</a>
-                        <a class="btn btn-outline-info" asp-page="/credit/creditrequest">تمدید دوره</a>
                     </div>
                 </div>
             </div>

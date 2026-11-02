@@ -1,75 +1,235 @@
 ﻿@page
 @model Invoice.Pages.Account.UserProfileModel
 @{
-    ViewBag.Title = "ناحیه کاربری";
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+    ViewBag.Title = "مدیریت و پروفایل فروشنده";
 }
-@if (ModelState.ErrorCount > 0)
-{
-    <div class="alert alert-danger" asp-validation-summary="All">
 
-    </div>
-}
-<form method="post" enctype="multipart/form-data">
-     @if (Model.Profile?.Id > 0)
-    {
-        <input type="hidden" asp-for="Profile.Id" />
-    }
-    <input type="hidden" asp-for="ReturnUrl" />
-    
-<div class="row">
-    <div class="form-group col-md-6">
-        <label class="form-label" asp-for="Profile.FirstName"></label>
-        <input class="form-control" asp-for="Profile.FirstName" />
-        <span class="text-danger" asp-validation-for="Profile.FirstName"></span>
-    </div>
-    <div class="form-group col-md-6">
-        <label class="form-label" asp-for="Profile.Lastname"></label>
-        <input class="form-control" asp-for="Profile.Lastname" />
-        <span class="text-danger" asp-validation-for="Profile.Lastname"></span>
-    </div>
-    <div class="form-group col-md-6">
-        <label asp-for="Profile.TinCode"></label>
-        <input asp-for="Profile.TinCode" class="form-control" />
-        <span asp-validation-for="Profile.TinCode" class="text-danger"></span>
-    </div>
-
-    <div class="form-group col-md-3">
-        <label asp-for="Profile.MemoryId"></label>
-        <input asp-for="Profile.MemoryId" class="form-control" />
-        <span asp-validation-for="Profile.MemoryId" class="text-danger"></span>
-    </div>
-    <div class="form-group col-md-3">
-        <label asp-for="Profile.BranchCode"></label>
-        <input asp-for="Profile.BranchCode" class="form-control" />
-        <span asp-validation-for="Profile.BranchCode" class="text-danger"></span>
-    </div>
-    <div class="form-group col-md-8">
-        <label asp-for="Profile.PrivateKey"></label>
-        <input type="file" asp-for="PrivateKey" class="form-control" />
-        <span asp-validation-for="Profile.PrivateKey" class="text-danger"></span>
-        @if (!string.IsNullOrEmpty(Model.Profile.PrivateKey))
-        {
-            <div class="mt-2 d-flex gap-2">
-                <a asp-page-handler="DownloadPrivateKey" class="btn btn-sm btn-outline-danger">
-                    <i class="fas fa-file-download me-1"></i> دانلود کلید خصوصی (private_key.pem)
-                </a>
-                <a asp-page-handler="DownloadPublicKey" class="btn btn-sm btn-outline-primary">
-                    <i class="fas fa-file-download me-1"></i> دانلود کلید عمومی (public_key.pem)
-                </a>
+<div class="container-fluid px-0">
+    <!-- ۱. هاب کاشی‌های شیشه‌ای مدیریت و پروفایل -->
+    <div class="glass-tile-grid not-print mb-4">
+        <a href="#profileGeneralInfo" onclick="document.getElementById('Profile_FirstName')?.focus();" class="glass-tile tile-blue">
+            <div class="tile-icon">
+                <i class="fas fa-id-card"></i>
             </div>
+            <div class="tile-title">
+                <span>مشخصات مودی</span>
+            </div>
+            <p class="tile-desc">ویرایش نام، کد اقتصادی و اطلاعات هویتی</p>
+        </a>
+
+        <a href="#profileTaxKeys" onclick="document.getElementById('PrivateKey')?.focus();" class="glass-tile tile-amber">
+            <div class="tile-icon">
+                <i class="fas fa-key"></i>
+            </div>
+            <div class="tile-title">
+                <span>کلیدها و حافظه</span>
+            </div>
+            <p class="tile-desc">تنظیم کلید خصوصی، شناسه یکتا و امضای دیجیتال</p>
+        </a>
+
+        <a href="/Account/Register" class="glass-tile tile-violet">
+            <div class="tile-icon">
+                <i class="fas fa-shield-alt"></i>
+            </div>
+            <div class="tile-title">
+                <span>امنیت و رمز عبور</span>
+            </div>
+            <p class="tile-desc">تغییر کلمه عبور ورود به سامانه</p>
+        </a>
+
+        <a href="/Request/RequestTaxMemoryId" class="glass-tile tile-cyan">
+            <div class="tile-icon">
+                <i class="fas fa-certificate"></i>
+            </div>
+            <div class="tile-title">
+                <span>درخواست کلید و CSR</span>
+            </div>
+            <p class="tile-desc">تولید خودکار گواهی و کلیدهای سامانه مودیان</p>
+        </a>
+
+        @if (User.IsInRole("reseller") || User.IsInRole("admin"))
+        {
+            <a href="/Admin/Users/Profiles" class="glass-tile tile-green">
+                <div class="tile-icon">
+                    <i class="fas fa-building"></i>
+                </div>
+                <div class="tile-title">
+                    <span>پرونده‌های نمایندگی</span>
+                </div>
+                <p class="tile-desc">مدیریت مودیان و پرونده‌های تحت پوشش</p>
+            </a>
+        }
+
+        @if (User.IsInRole("admin"))
+        {
+            <a href="/Admin/Users/Index" class="glass-tile tile-dark">
+                <div class="tile-icon">
+                    <i class="fas fa-users-cog"></i>
+                </div>
+                <div class="tile-title">
+                    <span>مدیریت کاربران</span>
+                </div>
+                <p class="tile-desc">کنترل دسترسی‌ها و مدیریت حساب کاربران</p>
+            </a>
+
+            <a href="/Admin/Bale/Index" class="glass-tile tile-rose">
+                <div class="tile-icon">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="tile-title">
+                    <span>ربات بله</span>
+                </div>
+                <p class="tile-desc">تنظیمات و مدیریت ربات صدور فاکتور در بله</p>
+            </a>
         }
     </div>
-    <div class="form-group col-md-4">
-        <label asp-for="Profile.InvoicePattern"></label>
-        <select asp-for="Profile.InvoicePattern" class="form-control" asp-items="@Html.GetEnumSelectList<InvoicePattern>()">
-            <option value="">--</option>
-        </select>
-        <span asp-validation-for="Profile.InvoicePattern" class="text-danger"></span>
+
+    <!-- ۲. فرم تنظیمات پروفایل در کادر شیشه‌ای -->
+    <div class="row justify-content-center">
+        <div class="col-lg-10 col-xl-9">
+            <div class="glass-card-surface" id="profileGeneralInfo">
+                <div class="d-flex align-items-center justify-content-between mb-4 border-bottom pb-3">
+                    <h5 class="glass-section-title m-0">
+                        <i class="fas fa-user-tie text-primary me-2"></i> مشخصات مودی و تنظیمات مالیاتی
+                    </h5>
+                    <span class="badge bg-primary-subtle text-primary border border-primary px-3 py-2 rounded-pill">
+                        <i class="fas fa-check-circle me-1"></i> وضعیت فعال
+                    </span>
+                </div>
+
+                @if (ModelState.ErrorCount > 0)
+                {
+                    <div class="alert alert-danger shadow-sm rounded-3" asp-validation-summary="All"></div>
+                }
+
+                <form method="post" enctype="multipart/form-data">
+                    @if (Model.Profile?.Id > 0)
+                    {
+                        <input type="hidden" asp-for="Profile.Id" />
+                    }
+                    <input type="hidden" asp-for="ReturnUrl" />
+
+                    <!-- بخش اول: اطلاعات هویتی و پرونده -->
+                    <h6 class="text-secondary fw-bold mb-3">
+                        <i class="fas fa-info-circle text-info me-1"></i> ۱. مشخصات عمومی و هویتی مودی
+                    </h6>
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-6 text-end">
+                            <label class="form-label fw-bold" asp-for="Profile.FirstName"></label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fas fa-user text-muted"></i></span>
+                                <input class="form-control" asp-for="Profile.FirstName" placeholder="نام مودی یا شرکت" />
+                            </div>
+                            <span class="text-danger small" asp-validation-for="Profile.FirstName"></span>
+                        </div>
+
+                        <div class="col-md-6 text-end">
+                            <label class="form-label fw-bold" asp-for="Profile.Lastname"></label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fas fa-user-tag text-muted"></i></span>
+                                <input class="form-control" asp-for="Profile.Lastname" placeholder="نام خانوادگی یا پسوند" />
+                            </div>
+                            <span class="text-danger small" asp-validation-for="Profile.Lastname"></span>
+                        </div>
+
+                        <div class="col-md-6 text-end">
+                            <label class="form-label fw-bold" asp-for="Profile.TinCode"></label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fas fa-barcode text-muted"></i></span>
+                                <input asp-for="Profile.TinCode" class="form-control" placeholder="شناسه یا کد اقتصادی ۱۴ رقمی" dir="ltr" />
+                            </div>
+                            <span asp-validation-for="Profile.TinCode" class="text-danger small"></span>
+                        </div>
+
+                        <div class="col-md-6 text-end">
+                            <label class="form-label fw-bold" asp-for="Profile.InvoicePattern"></label>
+                            <div class="input-group">
+                                <span class="input-group-text bg-light"><i class="fas fa-file-alt text-muted"></i></span>
+                                <select asp-for="Profile.InvoicePattern" class="form-select" asp-items="@Html.GetEnumSelectList<InvoicePattern>()">
+                                    <option value="">-- انتخاب الگوی پیش‌فرض صورتحساب --</option>
+                                </select>
+                            </div>
+                            <span asp-validation-for="Profile.InvoicePattern" class="text-danger small"></span>
+                        </div>
+                    </div>
+
+                    <!-- بخش دوم: اتصال به سامانه مودیان و حافظه مالیاتی -->
+                    <div id="profileTaxKeys" class="border-top pt-4">
+                        <h6 class="text-secondary fw-bold mb-3">
+                            <i class="fas fa-shield-alt text-warning me-1"></i> ۲. شناسه یکتای حافظه مالیاتی و شعبه
+                        </h6>
+                        <div class="row g-3 mb-4">
+                            <div class="col-md-6 text-end">
+                                <label class="form-label fw-bold" asp-for="Profile.MemoryId"></label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light"><i class="fas fa-microchip text-primary"></i></span>
+                                    <input asp-for="Profile.MemoryId" class="form-control" placeholder="شناسه ۶ کاراکتری حافظه مالیاتی" dir="ltr" />
+                                </div>
+                                <span asp-validation-for="Profile.MemoryId" class="text-danger small"></span>
+                            </div>
+
+                            <div class="col-md-6 text-end">
+                                <label class="form-label fw-bold" asp-for="Profile.BranchCode"></label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-light"><i class="fas fa-code-branch text-muted"></i></span>
+                                    <input asp-for="Profile.BranchCode" class="form-control" placeholder="کد شعبه (اختیاری)" dir="ltr" />
+                                </div>
+                                <span asp-validation-for="Profile.BranchCode" class="text-danger small"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- بخش سوم: کلید خصوصی و امضای دیجیتال -->
+                    <div class="border-top pt-4 mb-4">
+                        <h6 class="text-secondary fw-bold mb-3">
+                            <i class="fas fa-key text-danger me-1"></i> ۳. کلید خصوصی و امضای دیجیتال (RSA Key)
+                        </h6>
+                        <div class="text-end">
+                            <label class="form-label fw-bold" asp-for="Profile.PrivateKey"></label>
+                            <div class="input-group">
+                                <input type="file" asp-for="PrivateKey" class="form-control" accept=".pem,.key,.txt" />
+                            </div>
+                            <div class="form-text text-muted small mt-1">
+                                فایل متنی کلید خصوصی را با پسوند .pem یا .txt بارگذاری نمایید.
+                            </div>
+                            <span asp-validation-for="Profile.PrivateKey" class="text-danger small"></span>
+
+                            @if (!string.IsNullOrEmpty(Model.Profile.PrivateKey))
+                            {
+                                <div class="mt-3 p-3 bg-light rounded-3 border d-flex flex-wrap gap-2 align-items-center">
+                                    <span class="badge bg-success-subtle text-success border border-success me-2">
+                                        <i class="fas fa-check me-1"></i> کلید خصوصی ثبت شده است
+                                    </span>
+                                    <a asp-page-handler="DownloadPrivateKey" class="btn btn-sm btn-outline-danger rounded-pill">
+                                        <i class="fas fa-download me-1"></i> دانلود کلید خصوصی (.pem)
+                                    </a>
+                                    <a asp-page-handler="DownloadPublicKey" class="btn btn-sm btn-outline-primary rounded-pill">
+                                        <i class="fas fa-download me-1"></i> دانلود کلید عمومی (.pem)
+                                    </a>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- دکمه‌های عملیات -->
+                    <div class="d-flex flex-wrap gap-2 pt-2 border-top">
+                        <button class="btn btn-success px-4 py-2 rounded-3 shadow-sm fw-bold">
+                            <i class="fas fa-save me-1"></i> ذخیره تغییرات پروفایل
+                        </button>
+                        <a href="/Account/Register" class="btn btn-outline-secondary px-3 py-2 rounded-3">
+                            <i class="fas fa-key me-1"></i> تغییر رمز عبور
+                        </a>
+                        <a href="/" class="btn btn-link text-secondary px-3 py-2">
+                            بازگشت به پیشخوان
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 </div>
-    <button class="btn btn-success mt-3">ثبت <i class="fas fa-save"></i></button>
-    <a href="/account/register" class="btn btn-outline-secondary mt-3">تغییر رمز عبور <i class="fas fa-key"></i></a>
-</form>
-@section Scripts{
-    @Html.Partial("_ValidationScriptsPartial")
+
+@section Scripts {
+    <partial name="_ValidationScriptsPartial" />
 }

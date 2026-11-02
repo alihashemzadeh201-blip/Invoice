@@ -6,6 +6,63 @@
 }
 
 <div class="container-fluid px-0">
+    <!-- هاب کاشی‌های شیشه‌ای کالا و خدمات -->
+    <div class="glass-tile-grid not-print mb-4">
+        <a href="javascript:void(0)" onclick="document.querySelector('[data-tab=\'fav\']').click();" class="glass-tile tile-amber">
+            <div class="tile-icon">
+                <i class="fas fa-star"></i>
+            </div>
+            <div class="tile-title">
+                <span>کالاهای منتخب</span>
+                <span class="tile-badge bg-warning text-dark">@Model.FavoritesCount</span>
+            </div>
+            <p class="tile-desc">فهرست کالاهای آماده جهت استفاده در صدور فاکتور</p>
+        </a>
+
+        <a href="javascript:void(0)" onclick="document.querySelector('[data-tab=\'all\']').click(); document.getElementById('searchBox')?.focus();" class="glass-tile tile-blue">
+            <div class="tile-icon">
+                <i class="fas fa-search"></i>
+            </div>
+            <div class="tile-title">
+                <span>جستجو در کاتالوگ</span>
+            </div>
+            <p class="tile-desc">جستجو در بین تمامی شناسه‌های عمومی سامانه مودیان</p>
+        </a>
+
+        <a href="javascript:void(0)" data-bs-toggle="modal" data-bs-target="#createCustomProductModal" class="glass-tile tile-green">
+            <div class="tile-icon">
+                <i class="fas fa-plus-circle"></i>
+            </div>
+            <div class="tile-title">
+                <span>افزودن کالا / خدمت</span>
+            </div>
+            <p class="tile-desc">تعریف دستی کالای اختصاصی با شناسه و واحد دلخواه</p>
+        </a>
+
+        <a href="/InvoiceManage/CreateHeader" class="glass-tile tile-violet">
+            <div class="tile-icon">
+                <i class="fas fa-file-invoice"></i>
+            </div>
+            <div class="tile-title">
+                <span>صدور فاکتور جدید</span>
+            </div>
+            <p class="tile-desc">ایجاد فاکتور جدید با اقلام و کالاهای تعریف‌شده</p>
+        </a>
+
+        @if (User.IsInRole("admin"))
+        {
+            <a href="/Admin/Stuffs/Index" class="glass-tile tile-dark">
+                <div class="tile-icon">
+                    <i class="fas fa-database"></i>
+                </div>
+                <div class="tile-title">
+                    <span>شناسه‌های سیستمی</span>
+                </div>
+                <p class="tile-desc">مدیریت جامع کاتالوگ و شناسه‌های مالیاتی کالا</p>
+            </a>
+        }
+    </div>
+
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
         <div>
             <h4 class="mb-1 text-primary">

@@ -1,0 +1,637 @@
+/* ==========================================================================
+   Fintech Banking UI Design System - همراه بانک و نئوبانک مودیان
+   ========================================================================== */
+
+:root {
+    --fintech-primary: #2563eb;
+    --fintech-primary-dark: #1d4ed8;
+    --fintech-primary-light: #3b82f6;
+    --fintech-emerald: #10b981;
+    --fintech-emerald-dark: #059669;
+    --fintech-violet: #8b5cf6;
+    --fintech-violet-dark: #7c3aed;
+    --fintech-amber: #f59e0b;
+    --fintech-amber-dark: #d97706;
+    --fintech-rose: #f43f5e;
+    --fintech-rose-dark: #e11d48;
+    --fintech-cyan: #06b6d4;
+    --fintech-cyan-dark: #0891b2;
+    --fintech-bg: #f8fafc;
+    --fintech-surface: rgba(255, 255, 255, 0.82);
+    --fintech-border: rgba(255, 255, 255, 0.7);
+    --fintech-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.06), 0 4px 10px -2px rgba(15, 23, 42, 0.03);
+    --fintech-shadow-hover: 0 18px 36px -6px rgba(15, 23, 42, 0.12), 0 8px 16px -4px rgba(15, 23, 42, 0.06);
+    --fintech-blur: blur(16px);
+}
+
+body.fintech-body {
+    background-color: var(--fintech-bg);
+    background-image:
+        radial-gradient(at 10% 10%, rgba(37, 99, 235, 0.05) 0px, transparent 50%),
+        radial-gradient(at 90% 90%, rgba(139, 92, 246, 0.05) 0px, transparent 50%);
+    background-attachment: fixed;
+    min-height: 100vh;
+    padding-bottom: 100px !important; /* فضا برای نوار ناوبری پایینی */
+}
+
+/* ==========================================================================
+   ۱. هدر مدرن اپلیکیشن (Fintech Header)
+   ========================================================================== */
+.fintech-header {
+    position: sticky;
+    top: 0;
+    z-index: 1020;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: var(--fintech-blur);
+    -webkit-backdrop-filter: var(--fintech-blur);
+    border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.03);
+    padding: 10px 16px;
+    transition: all 0.3s ease;
+}
+
+.fintech-header-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.fintech-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+    color: #0f172a;
+}
+
+.fintech-brand-logo {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2);
+    object-fit: cover;
+}
+
+.fintech-brand-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin: 0;
+    line-height: 1.2;
+}
+
+.fintech-brand-sub {
+    font-size: 0.72rem;
+    color: #64748b;
+    margin: 0;
+}
+
+/* کپسول شیشه‌ای انتخاب پروفایل نماینده */
+.fintech-profile-pill {
+    background: rgba(241, 245, 249, 0.85);
+    border: 1px solid rgba(203, 213, 225, 0.8);
+    backdrop-filter: blur(8px);
+    border-radius: 30px;
+    padding: 4px 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+}
+
+.fintech-profile-pill:hover {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: var(--fintech-primary-light);
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+}
+
+.fintech-profile-select {
+    background: transparent;
+    border: none;
+    outline: none;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #1e293b;
+    cursor: pointer;
+    padding-left: 4px;
+}
+
+.fintech-user-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.fintech-user-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(241, 245, 249, 0.7);
+    border-radius: 20px;
+    padding: 5px 12px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #334155;
+    text-decoration: none;
+}
+
+.fintech-avatar-icon {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--fintech-primary), var(--fintech-violet));
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+}
+
+.fintech-btn-logout {
+    background: rgba(244, 63, 94, 0.08);
+    color: var(--fintech-rose-dark);
+    border: 1px solid rgba(244, 63, 94, 0.2);
+    border-radius: 12px;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    text-decoration: none;
+    transition: all 0.2s ease;
+}
+
+.fintech-btn-logout:hover {
+    background: var(--fintech-rose);
+    color: white;
+}
+
+/* ==========================================================================
+   ۲. کاشی‌های شیشه‌ای تعاملی (Glassmorphism Tiles)
+   ========================================================================== */
+.glass-tile-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 576px) {
+    .glass-tile-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+}
+
+.glass-tile {
+    background: var(--fintech-surface);
+    backdrop-filter: var(--fintech-blur);
+    -webkit-backdrop-filter: var(--fintech-blur);
+    border: 1px solid var(--fintech-border);
+    border-radius: 20px;
+    padding: 16px 14px;
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    color: inherit;
+    box-shadow: var(--fintech-shadow);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.glass-tile::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: transparent;
+    transition: background 0.25s ease;
+}
+
+.glass-tile:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--fintech-shadow-hover);
+    border-color: rgba(255, 255, 255, 0.95);
+    background: rgba(255, 255, 255, 0.95);
+    text-decoration: none;
+    color: inherit;
+}
+
+.glass-tile:active {
+    transform: scale(0.97);
+}
+
+.glass-tile .tile-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 1.3rem;
+    margin-bottom: 12px;
+    box-shadow: 0 6px 16px -2px rgba(0, 0, 0, 0.15);
+    transition: transform 0.25s ease;
+}
+
+.glass-tile:hover .tile-icon {
+    transform: scale(1.08) rotate(3deg);
+}
+
+.glass-tile .tile-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.glass-tile .tile-title .tile-badge {
+    font-size: 0.7rem;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-weight: 700;
+}
+
+.glass-tile .tile-desc {
+    font-size: 0.77rem;
+    color: #64748b;
+    line-height: 1.4;
+    margin: 0;
+}
+
+/* انواع پالت رنگی کاشی‌ها */
+.tile-blue .tile-icon { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+.tile-blue:hover::before { background: #2563eb; }
+
+.tile-green .tile-icon { background: linear-gradient(135deg, #10b981, #059669); }
+.tile-green:hover::before { background: #10b981; }
+
+.tile-violet .tile-icon { background: linear-gradient(135deg, #a855f7, #7c3aed); }
+.tile-violet:hover::before { background: #8b5cf6; }
+
+.tile-amber .tile-icon { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.tile-amber:hover::before { background: #f59e0b; }
+
+.tile-rose .tile-icon { background: linear-gradient(135deg, #f43f5e, #e11d48); }
+.tile-rose:hover::before { background: #f43f5e; }
+
+.tile-cyan .tile-icon { background: linear-gradient(135deg, #06b6d4, #0891b2); }
+.tile-cyan:hover::before { background: #06b6d4; }
+
+.tile-dark .tile-icon { background: linear-gradient(135deg, #334155, #0f172a); }
+.tile-dark:hover::before { background: #0f172a; }
+
+/* ==========================================================================
+   ۳. کارت بانکی دیجیتال (Digital Banking Card)
+   ========================================================================== */
+.fintech-bank-card {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 60%, #312e81 100%);
+    border-radius: 24px;
+    padding: 24px;
+    color: white;
+    box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.4);
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.fintech-bank-card::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -20%;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(99, 102, 241, 0.25) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.fintech-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.fintech-card-brand {
+    font-size: 0.9rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    opacity: 0.85;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.fintech-card-chip {
+    width: 44px;
+    height: 32px;
+    background: linear-gradient(135deg, #fef08a 0%, #ca8a04 100%);
+    border-radius: 6px;
+    box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.5);
+    position: relative;
+}
+
+.fintech-card-chip::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: rgba(0, 0, 0, 0.2);
+}
+
+.fintech-card-balance-label {
+    font-size: 0.8rem;
+    opacity: 0.75;
+    margin-bottom: 4px;
+}
+
+.fintech-card-balance {
+    font-size: 1.8rem;
+    font-weight: 900;
+    letter-spacing: 1px;
+    color: #ffffff;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.fintech-card-balance span {
+    font-size: 1rem;
+    font-weight: 500;
+    opacity: 0.8;
+}
+
+.fintech-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+.fintech-card-holder-label {
+    font-size: 0.72rem;
+    opacity: 0.65;
+    text-transform: uppercase;
+}
+
+.fintech-card-holder-name {
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.fintech-card-number {
+    font-family: monospace, sans-serif;
+    font-size: 1.15rem;
+    letter-spacing: 2px;
+    direction: ltr;
+    text-align: left;
+    margin-bottom: 12px;
+    opacity: 0.95;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fintech-copy-btn {
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    padding: 3px 8px;
+    border-radius: 8px;
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.fintech-copy-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* ==========================================================================
+   ۴. نوار ناوبری پایینی شیشه‌ای (Glassmorphism Bottom Navigation)
+   ========================================================================== */
+.fintech-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 1040;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: var(--fintech-blur);
+    -webkit-backdrop-filter: var(--fintech-blur);
+    border-top: 1px solid rgba(226, 232, 240, 0.8);
+    box-shadow: 0 -4px 20px rgba(15, 23, 42, 0.06);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    transition: all 0.3s ease;
+}
+
+/* در دسکتاپ و تبلت به صورت داک شیک شناور */
+@media (min-width: 769px) {
+    .fintech-bottom-nav {
+        left: 50%;
+        right: auto;
+        transform: translateX(-50%);
+        bottom: 16px;
+        width: 90%;
+        max-width: 600px;
+        border-radius: 28px;
+        border: 1px solid rgba(255, 255, 255, 0.9);
+        box-shadow: 0 12px 36px rgba(15, 23, 42, 0.15);
+        padding: 6px 14px;
+    }
+}
+
+.fintech-nav-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 4px;
+    color: #64748b;
+    text-decoration: none;
+    font-size: 0.75rem;
+    font-weight: 600;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+}
+
+.fintech-nav-item .nav-icon-box {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    margin-bottom: 2px;
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fintech-nav-item:hover {
+    color: var(--fintech-primary);
+    text-decoration: none;
+}
+
+.fintech-nav-item.active {
+    color: var(--fintech-primary-dark);
+    font-weight: 800;
+}
+
+.fintech-nav-item.active .nav-icon-box {
+    background: linear-gradient(135deg, rgba(37, 99, 235, 0.15), rgba(139, 92, 246, 0.15));
+    color: var(--fintech-primary);
+    transform: translateY(-2px) scale(1.1);
+}
+
+/* کپسول شناور عنوان صفحه در هاب */
+.fintech-page-hero {
+    background: var(--fintech-surface);
+    backdrop-filter: var(--fintech-blur);
+    -webkit-backdrop-filter: var(--fintech-blur);
+    border: 1px solid var(--fintech-border);
+    border-radius: 20px;
+    padding: 18px 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--fintech-shadow);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.fintech-page-hero h1,
+.fintech-page-hero h2,
+.fintech-page-hero h4 {
+    margin: 0;
+    font-weight: 800;
+    color: #1e293b;
+    font-size: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fintech-hero-sub {
+    color: #64748b;
+    font-size: 0.85rem;
+    margin-top: 4px;
+}
+
+/* کانتینر اصلی تمام صفحه */
+.fintech-main-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px 16px;
+}
+
+/* کارت‌های آمار شیشه‌ای (Glass Stat Cards) */
+.glass-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 576px) {
+    .glass-stat-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+    }
+}
+
+.glass-stat-card {
+    background: var(--fintech-surface);
+    backdrop-filter: var(--fintech-blur);
+    -webkit-backdrop-filter: var(--fintech-blur);
+    border: 1px solid var(--fintech-border);
+    border-radius: 20px;
+    padding: 18px 16px;
+    box-shadow: var(--fintech-shadow);
+    transition: all 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+.glass-stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--fintech-shadow-hover);
+}
+
+.glass-stat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.glass-stat-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #64748b;
+    margin: 0;
+}
+
+.glass-stat-icon-wrap {
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    color: white;
+}
+
+.glass-stat-val {
+    font-size: 1.8rem;
+    font-weight: 900;
+    color: #0f172a;
+    line-height: 1;
+    margin: 0;
+}
+
+.glass-card-surface {
+    background: var(--fintech-surface);
+    backdrop-filter: var(--fintech-blur);
+    -webkit-backdrop-filter: var(--fintech-blur);
+    border: 1px solid var(--fintech-border);
+    border-radius: 20px;
+    padding: 20px;
+    box-shadow: var(--fintech-shadow);
+    margin-bottom: 24px;
+}
+
+.glass-section-title {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+

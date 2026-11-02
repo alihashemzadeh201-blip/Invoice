@@ -33,15 +33,81 @@
             </div>
         </div>
     }*@
-<div class=" align-items-end">
+<div class="align-items-end">
+    <!-- هاب کاشی‌های شیشه‌ای مدیریت فاکتورها -->
+    <div class="glass-tile-grid not-print mb-4">
+        <a asp-page="CreateHeader" class="glass-tile tile-blue">
+            <div class="tile-icon">
+                <i class="fas fa-plus"></i>
+            </div>
+            <div class="tile-title">
+                <span>فاکتور جدید</span>
+            </div>
+            <p class="tile-desc">ثبت و ارسال فاکتور فروش الکترونیکی</p>
+        </a>
+
+        <a asp-page="ImportGroupFactor" class="glass-tile tile-cyan">
+            <div class="tile-icon">
+                <i class="fas fa-file-excel"></i>
+            </div>
+            <div class="tile-title">
+                <span>ارسال گروهی (اکسل)</span>
+            </div>
+            <p class="tile-desc">بارگذاری دسته‌ای فاکتورها با فایل اکسل</p>
+        </a>
+
+        <a asp-page="ManualInvoiceCancel" class="glass-tile tile-rose">
+            <div class="tile-icon">
+                <i class="fas fa-ban"></i>
+            </div>
+            <div class="tile-title">
+                <span>ابطال فاکتور</span>
+            </div>
+            <p class="tile-desc">ابطال دستی صورتحساب‌های ارسال‌شده</p>
+        </a>
+
+        <a asp-page="Index" asp-page-handler="ExportExcel" class="glass-tile tile-green">
+            <div class="tile-icon">
+                <i class="fas fa-file-export"></i>
+            </div>
+            <div class="tile-title">
+                <span>خروجی اکسل</span>
+            </div>
+            <p class="tile-desc">دریافت فایل گزارش اکسل فاکتورها</p>
+        </a>
+
+        <a href="javascript:void(0)" onclick="$('#toggleFilter').click(); $('html, body').animate({scrollTop: $('#filterBox').offset().top - 80}, 300);" class="glass-tile tile-amber">
+            <div class="tile-icon">
+                <i class="fas fa-filter"></i>
+            </div>
+            <div class="tile-title">
+                <span>فیلتر و جستجو</span>
+            </div>
+            <p class="tile-desc">جستجوی پیشرفته بر اساس تاریخ و وضعیت</p>
+        </a>
+
+        @if (User.IsInRole("reseller") || User.IsInRole("admin"))
+        {
+            <a asp-page="/InvoiceManage/CustomerLedger" class="glass-tile tile-dark">
+                <div class="tile-icon">
+                    <i class="fas fa-users-cog"></i>
+                </div>
+                <div class="tile-title">
+                    <span>حساب مشتریان</span>
+                </div>
+                <p class="tile-desc">مدیریت مالی و گزارش کارکرد کاربران</p>
+            </a>
+        }
+    </div>
+
     @if (User.IsInRole("reseller"))
     {
         <div class="form-group mb-3">
             <lable class="form-label">پروفایل : </lable>
-            <span class="bg-white border rounded-pill p-1 pe-4 ps-4 text-secondary">@profile.Profile</span>
+            <span class="bg-white border rounded-pill p-1 pe-4 ps-4 text-secondary">@profile.Profile?.DisplayName</span>
         </div>
     }
-  
+
     <div class="d-flex">
         <div class="ms-1 mt-3">
             <a asp-page="CreateHeader" class="btn btn-info w-100">فاکتور جدید <span class="fa fa-plus"></span></a>

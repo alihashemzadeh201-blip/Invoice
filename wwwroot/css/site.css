@@ -674,18 +674,20 @@ body {
 
 /* Main Content */
 .main-content {
-    margin-right: 80px;
-    padding: 30px;
-    transition: margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    margin-right: 0;
+    padding: 24px;
+    transition: none;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
-    /*position: relative;*/
     z-index: 1;
+    max-width: 1400px;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 .sidebar-open ~ .main-content {
-    margin-right: 280px;
+    margin-right: auto;
 }
 .sidebar-open ~ .navigation-loader{
     right:280px;

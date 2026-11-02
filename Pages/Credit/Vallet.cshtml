@@ -2,46 +2,169 @@
 @model Invoices.Pages.Vallet.ValletModel
 @{
     Layout = "~/Pages/Shared/_Layout.cshtml";
-    ViewData["Title"] = "کیف پول";
+    ViewData["Title"] = "کیف پول و امور مالی";
 }
-<div class="text-center d-inline-block w-100">
-    <div class="col-md-4 float-none m-auto mb-4">
-        <div>
-            <span class='text-muted'>
-                موجودی کیف پول شما :
-            </span>
-            <p class='strong h4 mt-3 text-success'>@Utils.GetFormatedCurrency( Model.Vallet) ریال</p>
-        </div>
 
-        <div class="alert alert-info">
-            جهت شارژ کیف پول ابتدا مبلغ مورد نظر را به شماره کارت <div class="strong text-center flex-nowrap">6063-7310-5595-3393</div> به نام <span class="strong">علی هاشم زاده</span> واریز نموده و سپس مبلغ ، شماره کارت مبدا و شماره رسید واریز را در کادر ذیل وارد نموده و درخواست افزایش موجودی را کلیک نمایید.
-        </div>
+<div class="container-fluid px-0">
+    <!-- ۱. هاب کاشی‌های شیشه‌ای کیف پول -->
+    <div class="glass-tile-grid not-print mb-4">
+        <a href="#depositFormCard" onclick="document.getElementById('Transaction_Price')?.focus();" class="glass-tile tile-green">
+            <div class="tile-icon">
+                <i class="fas fa-plus-circle"></i>
+            </div>
+            <div class="tile-title">
+                <span>شارژ کیف پول</span>
+            </div>
+            <p class="tile-desc">ثبت فیش واریزی و افزایش موجودی حساب</p>
+        </a>
+
+        <a asp-page="ValletTransactions" class="glass-tile tile-blue">
+            <div class="tile-icon">
+                <i class="fas fa-history"></i>
+            </div>
+            <div class="tile-title">
+                <span>سوابق تراکنش‌ها</span>
+            </div>
+            <p class="tile-desc">مشاهده گردش حساب و وضعیت تایید فیش‌ها</p>
+        </a>
+
+        <a asp-page="CreditRequest" class="glass-tile tile-amber">
+            <div class="tile-icon">
+                <i class="fas fa-calendar-check"></i>
+            </div>
+            <div class="tile-title">
+                <span>تمدید دوره</span>
+            </div>
+            <p class="tile-desc">تمدید اشتراک دوره‌ای صدور و ارسال فاکتور</p>
+        </a>
+
+        @if (User.IsInRole("reseller") || User.IsInRole("admin"))
+        {
+            <a asp-page="/InvoiceManage/CustomerLedger" class="glass-tile tile-violet">
+                <div class="tile-icon">
+                    <i class="fas fa-users-cog"></i>
+                </div>
+                <div class="tile-title">
+                    <span>حساب مشتریان</span>
+                </div>
+                <p class="tile-desc">دفتر کل مالی و کارکرد مشتریان نمایندگی</p>
+            </a>
+        }
+    </div>
+
+    <div class="row justify-content-center">
+        <!-- ۲. کارت بانکی دیجیتال حساب مودی و مقصد واریز -->
+        <div class="col-lg-6 col-md-8 mb-4">
+            <!-- کارت بانکی مقصد واریز -->
+            <div class="fintech-bank-card">
+                <div class="fintech-card-header">
+                    <div class="fintech-card-brand">
+                        <i class="fas fa-university me-1 text-warning"></i> بانک مقصد جهت واریز
+                    </div>
+                    <div class="fintech-card-chip"></div>
+                </div>
+
+                <div class="fintech-card-balance-label">موجودی فعلی کیف پول شما</div>
+                <div class="fintech-card-balance">
+                    @Utils.GetFormatedCurrency(Model.Vallet)
+                    <span>ریال</span>
+                </div>
+
+                <div class="fintech-card-holder-label mb-1">شماره کارت مقصد جهت شارژ حساب</div>
+                <div class="fintech-card-number">
+                    <span>6063 - 7310 - 5595 - 3393</span>
+                    <button type="button" class="fintech-copy-btn ms-auto" id="copyCardBtn" onclick="copyCardNumber()">
+                        <i class="fas fa-copy me-1"></i> کپی شماره کارت
+                    </button>
+                </div>
+
+                <div class="fintech-card-footer">
+                    <div>
+                        <div class="fintech-card-holder-label">صاحب حساب</div>
+                        <div class="fintech-card-holder-name">علی هاشم زاده</div>
+                    </div>
+                    <span class="badge bg-success-subtle text-success border border-success px-3 py-2 rounded-pill">
+                        <i class="fas fa-bolt me-1"></i> تایید سریع
+                    </span>
+                </div>
+            </div>
+
+            <!-- راهنمای واریز -->
+            <div class="alert alert-info border-0 shadow-sm rounded-4">
+                <i class="fas fa-info-circle me-1"></i>
+                جهت شارژ کیف پول، ابتدا مبلغ مورد نظر را به شماره کارت فوق واریز نموده و سپس مشخصات فیش واریز را در فرم زیر ثبت فرمایید.
+            </div>
+
+            <!-- ۳. فرم ثبت فیش واریزی -->
+            <div class="glass-card-surface" id="depositFormCard">
+                <h5 class="glass-section-title mb-3">
+                    <i class="fas fa-file-invoice-dollar text-success"></i> ثبت مشخصات فیش واریزی
+                </h5>
+
                 @if (ModelState.ErrorCount > 0)
                 {
                     <div class="alert alert-danger" asp-validation-summary="All"></div>
                 }
+
                 <form method="post">
                     <input type="hidden" asp-for="Transaction.CustomerUsername" />
-                    <div class='form-group'>
-                        <label asp-for="Transaction.Price"></label>
-                        
-                            <input class='form-control currency' asp-for="Transaction.Price" />                            
-                            <div class="text-success persian-text"></div>
-                       
-                        <span asp-validation-for="Transaction.Price" class='text-danger'></span>
+
+                    <div class="form-group mb-3 text-end">
+                        <label asp-for="Transaction.Price" class="form-label fw-bold"></label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light"><i class="fas fa-money-bill-wave text-success"></i></span>
+                            <input class="form-control currency" asp-for="Transaction.Price" placeholder="مبلغ به ریال" />
+                            <span class="input-group-text bg-light">ریال</span>
+                        </div>
+                        <div class="text-success persian-text small mt-1"></div>
+                        <span asp-validation-for="Transaction.Price" class="text-danger small"></span>
                     </div>
-                    <div class='form-group'>
-                        <label asp-for="Transaction.SourceCardNumber"></label>
-                        <input class='form-control' asp-for="Transaction.SourceCardNumber" />
-                        <span asp-validation-for="Transaction.SourceCardNumber" class='text-danger'></span>
+
+                    <div class="form-group mb-3 text-end">
+                        <label asp-for="Transaction.SourceCardNumber" class="form-label fw-bold"></label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light"><i class="fas fa-credit-card text-primary"></i></span>
+                            <input class="form-control" asp-for="Transaction.SourceCardNumber" placeholder="شماره ۱۶ رقمی کارت مبدا" dir="ltr" />
+                        </div>
+                        <span asp-validation-for="Transaction.SourceCardNumber" class="text-danger small"></span>
                     </div>
-                    <div class='form-group mt-3'>
-                        <label asp-for="Transaction.BankTransactionReceipt"></label>
-                        <input class='form-control' asp-for="Transaction.BankTransactionReceipt" />
-                        <span asp-validation-for="Transaction.BankTransactionReceipt" class='text-danger'></span>
+
+                    <div class="form-group mb-3 text-end">
+                        <label asp-for="Transaction.BankTransactionReceipt" class="form-label fw-bold"></label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light"><i class="fas fa-receipt text-secondary"></i></span>
+                            <input class="form-control" asp-for="Transaction.BankTransactionReceipt" placeholder="شماره پیگیری / ارجاع واریز" dir="ltr" />
+                        </div>
+                        <span asp-validation-for="Transaction.BankTransactionReceipt" class="text-danger small"></span>
                     </div>
-                    <button class='btn btn-success w-100 mt-3'>درخواست افزایش موجودی</button>
-                    <a class='btn btn-outline-secondary w-100 mt-3' asp-page="ValletTransactions">مشاهده درخواست ها</a>
+
+                    <button class="btn btn-success btn-lg w-100 mt-3 shadow-sm rounded-3 fw-bold">
+                        <i class="fas fa-check-circle me-1"></i> ارسال درخواست افزایش موجودی
+                    </button>
+
+                    <a class="btn btn-outline-secondary w-100 mt-2 rounded-3" asp-page="ValletTransactions">
+                        <i class="fas fa-list me-1"></i> مشاهده سوابق درخواست‌ها
+                    </a>
                 </form>
+            </div>
+        </div>
     </div>
 </div>
+
+@section Scripts {
+    <script>
+        function copyCardNumber() {
+            navigator.clipboard.writeText('6063731055953393').then(function () {
+                var btn = document.getElementById('copyCardBtn');
+                if (btn) {
+                    btn.innerHTML = '<i class="fas fa-check me-1"></i> کپی شد!';
+                    btn.style.background = '#10b981';
+                    setTimeout(function () {
+                        btn.innerHTML = '<i class="fas fa-copy me-1"></i> کپی شماره کارت';
+                        btn.style.background = '';
+                    }, 2500);
+                }
+            });
+        }
+    </script>
+}
