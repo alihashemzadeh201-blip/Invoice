@@ -20,10 +20,19 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
 namespace Invoice.Pages.Admin.Stuffs
 {
+    public class StuffImportResult
+    {
+        public int InsertedCount { get; set; }
+        public int UpdatedCount { get; set; }
+        public int ExpiredSkippedCount { get; set; }
+        public int SkippedCount { get; set; }
+        public int TotalProcessed { get; set; }
+    }
     public class StuffImportProgressState
     {
         public string TaskId { get; set; } = string.Empty;
@@ -80,15 +89,18 @@ namespace Invoice.Pages.Admin.Stuffs
         private readonly DataContext _context;
         private readonly IUserActivityLogger _activityLogger;
         private readonly ILogger<ImportModel> _logger;
+        private readonly IServiceScopeFactory? _scopeFactory;
 
         public ImportModel(
             DataContext context,
             IUserActivityLogger activityLogger,
-            ILogger<ImportModel> logger)
+            ILogger<ImportModel> logger,
+            IServiceScopeFactory? scopeFactory = null)
         {
             _context = context;
             _activityLogger = activityLogger;
             _logger = logger;
+            _scopeFactory = scopeFactory;
         }
 
         [BindProperty]
@@ -185,15 +197,44 @@ namespace Invoice.Pages.Admin.Stuffs
                     await ExcelFile.CopyToAsync(fileStream, ct);
                 }
 
-                progress.StageTitle = "در حال تحلیل و استخراج ساختار فایل اکسل...";
+                progress.StageTitle = "فایل با موفقیت دریافت شد. در حال استخراج و تحلیل ساختار اکسل...";
                 progress.Percent = 10;
 
-                await ProcessLargeExcelFileAsync(tempPath, effectiveTaskId, ct);
+                if (isAjax)
+                {
+                    var capturedTaskId = effectiveTaskId;
+                    var capturedUpdateExisting = UpdateExisting;
+                    var capturedFileName = ExcelFile.FileName;
+                    var capturedUserName = User?.Identity?.Name ?? "Admin";
+
+                    // ارسال به تسک پس‌زمینه با Scope مستقل جهت رهایی از محدودیت زمان اتصال HTTP
+                    _ = Task.Run(async () =>
+                    {
+                        await ExecuteBackgroundImportAsync(tempPath, capturedTaskId, capturedUpdateExisting, capturedFileName, capturedUserName);
+                    });
+
+                    // بازگرداندن پاسخ فوری ۲۰۰ به کلاینت ظرف کمتر از ۱ ثانیه تا پروکسی و وب‌سرور هرگز ۵۰۲ یا ۵۰۴ ندهند
+                    return new JsonResult(new
+                    {
+                        success = true,
+                        started = true,
+                        taskId = effectiveTaskId,
+                        message = "فایل با موفقیت در سرور دریافت شد و پردازش غیرهمزمان در پس‌زمینه آغاز گردید."
+                    });
+                }
+
+                // پردازش سنتی برای حالت بدون جاوااسکریپت (Fallback)
+                var result = await ProcessLargeExcelFileAsync(_context, tempPath, effectiveTaskId, UpdateExisting, ct);
+                InsertedCount = result.InsertedCount;
+                UpdatedCount = result.UpdatedCount;
+                ExpiredSkippedCount = result.ExpiredSkippedCount;
+                SkippedCount = result.SkippedCount;
+                TotalProcessedCount = result.TotalProcessed;
 
                 await _activityLogger.LogAsync(
                     "شناسه کالا",
                     "بارگذاری اکسل شناسه کالاها",
-                    $"بارگذاری موفقیت‌آمیز {InsertedCount} شناسه جدید، بروزرسانی {UpdatedCount} شناسه و نادیده گرفتن {ExpiredSkippedCount} مورد منقضی شده از فایل {ExcelFile.FileName}",
+                    $"بارگذاری موفقیت‌آمیز {InsertedCount:N0} شناسه جدید، بروزرسانی {UpdatedCount:N0} شناسه و نادیده گرفتن {ExpiredSkippedCount:N0} مورد منقضی شده از فایل {ExcelFile.FileName}",
                     entityId: InsertedCount.ToString(),
                     ct: ct);
 
@@ -215,20 +256,6 @@ namespace Invoice.Pages.Admin.Stuffs
                 progress.SkippedCount = SkippedCount;
                 progress.ResultMessage = SuccessMessage;
 
-                if (isAjax)
-                {
-                    return new JsonResult(new
-                    {
-                        success = true,
-                        insertedCount = InsertedCount,
-                        updatedCount = UpdatedCount,
-                        expiredSkippedCount = ExpiredSkippedCount,
-                        skippedCount = SkippedCount,
-                        totalProcessedCount = TotalProcessedCount,
-                        message = SuccessMessage
-                    });
-                }
-
                 return RedirectToPage("./Index");
             }
             catch (Exception ex)
@@ -241,6 +268,17 @@ namespace Invoice.Pages.Admin.Stuffs
                 progress.ErrorMessage = errMsg;
                 progress.IsCompleted = true;
 
+                try
+                {
+                    if (System.IO.File.Exists(tempPath))
+                    {
+                        System.IO.File.Delete(tempPath);
+                    }
+                }
+                catch
+                {
+                }
+
                 if (isAjax)
                 {
                     return new JsonResult(new { success = false, message = errMsg });
@@ -248,6 +286,77 @@ namespace Invoice.Pages.Admin.Stuffs
 
                 ErrorMessage = errMsg;
                 return Page();
+            }
+            finally
+            {
+                if (!isAjax)
+                {
+                    try
+                    {
+                        if (System.IO.File.Exists(tempPath))
+                        {
+                            System.IO.File.Delete(tempPath);
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+        }
+
+        private async Task ExecuteBackgroundImportAsync(string tempPath, string taskId, bool updateExisting, string fileName, string userName)
+        {
+            var progress = StuffImportProgressTracker.GetOrCreate(taskId);
+            try
+            {
+                using var scope = _scopeFactory?.CreateScope();
+                var scopedContext = scope != null
+                    ? scope.ServiceProvider.GetRequiredService<DataContext>()
+                    : _context;
+                var scopedActivityLogger = scope != null
+                    ? scope.ServiceProvider.GetRequiredService<IUserActivityLogger>()
+                    : _activityLogger;
+                var scopedLogger = scope != null
+                    ? scope.ServiceProvider.GetRequiredService<ILogger<ImportModel>>()
+                    : _logger;
+
+                var result = await ProcessLargeExcelFileAsync(scopedContext, tempPath, taskId, updateExisting, CancellationToken.None);
+
+                await scopedActivityLogger.LogAsync(
+                    "شناسه کالا",
+                    "بارگذاری اکسل شناسه کالاها",
+                    $"بارگذاری موفقیت‌آمیز {result.InsertedCount:N0} شناسه جدید، بروزرسانی {result.UpdatedCount:N0} شناسه و نادیده گرفتن {result.ExpiredSkippedCount:N0} مورد منقضی شده از فایل {fileName}",
+                    entityId: result.InsertedCount.ToString());
+
+                var resultDetails = new List<string>();
+                resultDetails.Add($"{result.InsertedCount:N0} شناسه جدید افزوده شد");
+                if (result.UpdatedCount > 0) resultDetails.Add($"{result.UpdatedCount:N0} مورد بروزرسانی گردید");
+                if (result.ExpiredSkippedCount > 0) resultDetails.Add($"{result.ExpiredSkippedCount:N0} مورد منقضی‌شده نادیده گرفته شد");
+                if (result.SkippedCount > 0) resultDetails.Add($"{result.SkippedCount:N0} مورد تکراری نادیده گرفته شد");
+
+                var successMsg = "عملیات بارگذاری انبوه با موفقیت انجام شد: " + string.Join("، ", resultDetails) + ".";
+
+                progress.Stage = "completed";
+                progress.StageTitle = "عملیات بارگذاری با موفقیت به پایان رسید.";
+                progress.Percent = 100;
+                progress.IsCompleted = true;
+                progress.InsertedCount = result.InsertedCount;
+                progress.UpdatedCount = result.UpdatedCount;
+                progress.ExpiredSkippedCount = result.ExpiredSkippedCount;
+                progress.SkippedCount = result.SkippedCount;
+                progress.TotalEstimatedRows = result.TotalProcessed;
+                progress.ProcessedRows = result.TotalProcessed;
+                progress.ResultMessage = successMsg;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "خطا در پردازش پس‌زمینه فایل اکسل کالاها.");
+                var errMsg = "خطا در پردازش فایل اکسل: " + ex.Message;
+                progress.Stage = "error";
+                progress.StageTitle = "خطا در فرآیند بارگذاری";
+                progress.ErrorMessage = errMsg;
+                progress.IsCompleted = true;
             }
             finally
             {
@@ -260,13 +369,14 @@ namespace Invoice.Pages.Admin.Stuffs
                 }
                 catch
                 {
-                    // نادیده گرفتن خطای حذف فایل موقت
                 }
             }
         }
 
-        private async Task ProcessLargeExcelFileAsync(string filePath, string taskId, CancellationToken ct)
+        private async Task<StuffImportResult> ProcessLargeExcelFileAsync(DataContext context, string filePath, string taskId, bool updateExisting, CancellationToken ct)
         {
+            var result = new StuffImportResult();
+
             using var document = SpreadsheetDocument.Open(filePath, false);
             var workbookPart = document.WorkbookPart;
             if (workbookPart == null)
@@ -369,8 +479,8 @@ namespace Invoice.Pages.Admin.Stuffs
             });
 
             // آماده‌سازی برای ذخیره فوق‌سریع در دیتابیس
-            var isSqlServer = _context.Database.IsSqlServer();
-            var connection = _context.Database.GetDbConnection();
+            var isSqlServer = context.Database.IsSqlServer();
+            var connection = context.Database.GetDbConnection();
             if (connection.State != ConnectionState.Open)
             {
                 await connection.OpenAsync(ct);
@@ -514,7 +624,7 @@ CREATE TABLE #StagingBatch (
                         var rawExpire = rowBuffer[expireCol];
                         if (IsExpired(rawExpire, today))
                         {
-                            ExpiredSkippedCount++;
+                            result.ExpiredSkippedCount++;
                             continue;
                         }
                     }
@@ -570,11 +680,11 @@ CREATE TABLE #StagingBatch (
                         // هر ۵۰۰۰ رکورد، عملیات درج و ادغام دسته‌ای و بازیافت خودکار لاگ انجام می‌شود
                         if (bulkTable.Rows.Count >= 5000)
                         {
-                            await FlushAndMergeBatchToSqlServerAsync(sqlConnection, bulkTable, UpdateExisting, ct);
+                            await FlushAndMergeBatchToSqlServerAsync(sqlConnection, bulkTable, updateExisting, result, ct);
                             bulkTable.Clear();
 
                             // بروزرسانی پیشرفت
-                            UpdateImportProgress(taskId, processedRowCount, totalEstimatedRows);
+                            UpdateImportProgress(taskId, processedRowCount, totalEstimatedRows, result);
                             lastProgressReportedRow = processedRowCount;
                         }
                     }
@@ -594,9 +704,9 @@ CREATE TABLE #StagingBatch (
 
                         if (sqliteFallbackBatch.Count >= 250)
                         {
-                            await FlushBatchToSqliteAsync(sqliteFallbackBatch, ct);
+                            await FlushBatchToSqliteAsync(context, sqliteFallbackBatch, updateExisting, result, ct);
                             sqliteFallbackBatch.Clear();
-                            UpdateImportProgress(taskId, processedRowCount, totalEstimatedRows);
+                            UpdateImportProgress(taskId, processedRowCount, totalEstimatedRows, result);
                             lastProgressReportedRow = processedRowCount;
                         }
                     }
@@ -604,7 +714,7 @@ CREATE TABLE #StagingBatch (
                     // بروزرسانی نوار پیشرفت هر ۵۰۰۰ سطر
                     if (processedRowCount - lastProgressReportedRow >= 5000)
                     {
-                        UpdateImportProgress(taskId, processedRowCount, totalEstimatedRows);
+                        UpdateImportProgress(taskId, processedRowCount, totalEstimatedRows, result);
                         lastProgressReportedRow = processedRowCount;
                     }
                 }
@@ -613,12 +723,12 @@ CREATE TABLE #StagingBatch (
             // ارسال باقیمانده داده‌ها
             if (sqlConnection != null && bulkTable.Rows.Count > 0)
             {
-                await FlushAndMergeBatchToSqlServerAsync(sqlConnection, bulkTable, UpdateExisting, ct);
+                await FlushAndMergeBatchToSqlServerAsync(sqlConnection, bulkTable, updateExisting, result, ct);
                 bulkTable.Clear();
             }
             else if (sqliteFallbackBatch.Count > 0)
             {
-                await FlushBatchToSqliteAsync(sqliteFallbackBatch, ct);
+                await FlushBatchToSqliteAsync(context, sqliteFallbackBatch, updateExisting, result, ct);
                 sqliteFallbackBatch.Clear();
             }
 
@@ -630,16 +740,22 @@ CREATE TABLE #StagingBatch (
                 await cleanupCmd.ExecuteNonQueryAsync(ct);
             }
 
-            TotalProcessedCount = processedRowCount;
+            result.TotalProcessed = processedRowCount;
             StuffImportProgressTracker.Update(taskId, p =>
             {
                 p.ProcessedRows = processedRowCount;
+                p.InsertedCount = result.InsertedCount;
+                p.UpdatedCount = result.UpdatedCount;
+                p.ExpiredSkippedCount = result.ExpiredSkippedCount;
+                p.SkippedCount = result.SkippedCount;
                 p.Percent = 100;
-                p.StageTitle = "عملیات با موفقیت به پایان رسید.";
+                p.StageTitle = "عملیات استخراج و درج با موفقیت به پایان رسید.";
             });
+
+            return result;
         }
 
-        private async Task FlushAndMergeBatchToSqlServerAsync(SqlConnection sqlConnection, DataTable table, bool updateExisting, CancellationToken ct)
+        private async Task FlushAndMergeBatchToSqlServerAsync(SqlConnection sqlConnection, DataTable table, bool updateExisting, StuffImportResult result, CancellationToken ct)
         {
             using (var bulkCopy = new SqlBulkCopy(sqlConnection, SqlBulkCopyOptions.TableLock, null)
             {
@@ -718,22 +834,22 @@ CHECKPOINT;
                 int newRows = reader.IsDBNull(0) ? 0 : Convert.ToInt32(reader.GetValue(0));
                 int existingRows = reader.IsDBNull(1) ? 0 : Convert.ToInt32(reader.GetValue(1));
 
-                InsertedCount += newRows;
+                result.InsertedCount += newRows;
                 if (updateExisting)
                 {
-                    UpdatedCount += existingRows;
+                    result.UpdatedCount += existingRows;
                 }
                 else
                 {
-                    SkippedCount += existingRows;
+                    result.SkippedCount += existingRows;
                 }
             }
         }
 
-        private async Task FlushBatchToSqliteAsync(List<Stuff> batch, CancellationToken ct)
+        private async Task FlushBatchToSqliteAsync(DataContext context, List<Stuff> batch, bool updateExisting, StuffImportResult result, CancellationToken ct)
         {
             var chunkCodes = batch.Select(c => c.Code).ToList();
-            var existingBatch = await _context.Stuffs
+            var existingBatch = await context.Stuffs
                 .Where(s => chunkCodes.Contains(s.Code))
                 .ToDictionaryAsync(s => s.Code, StringComparer.OrdinalIgnoreCase, ct);
 
@@ -741,7 +857,7 @@ CHECKPOINT;
             {
                 if (existingBatch.TryGetValue(item.Code, out var existing))
                 {
-                    if (UpdateExisting)
+                    if (updateExisting)
                     {
                         existing.Title = item.Title;
                         existing.VatRate = item.VatRate;
@@ -749,39 +865,45 @@ CHECKPOINT;
                         existing.VatTax = item.VatTax;
                         existing.Special = item.Special;
                         existing.VatCustomRate = item.VatCustomRate;
-                        UpdatedCount++;
+                        result.UpdatedCount++;
                     }
                     else
                     {
-                        SkippedCount++;
+                        result.SkippedCount++;
                     }
                 }
                 else
                 {
-                    _context.Stuffs.Add(item);
-                    InsertedCount++;
+                    context.Stuffs.Add(item);
+                    result.InsertedCount++;
                 }
             }
 
-            await _context.SaveChangesAsync(ct);
-            _context.ChangeTracker.Clear();
+            await context.SaveChangesAsync(ct);
+            context.ChangeTracker.Clear();
         }
 
-        private void UpdateImportProgress(string taskId, int processedRows, int totalEstimatedRows)
+        private void UpdateImportProgress(string taskId, int processedRows, int totalEstimatedRows, StuffImportResult result)
         {
             StuffImportProgressTracker.Update(taskId, p =>
             {
                 p.ProcessedRows = processedRows;
+                p.InsertedCount = result.InsertedCount;
+                p.UpdatedCount = result.UpdatedCount;
+                p.ExpiredSkippedCount = result.ExpiredSkippedCount;
+                p.SkippedCount = result.SkippedCount;
+
                 if (totalEstimatedRows > 0)
                 {
                     var calc = (int)((processedRows / (double)totalEstimatedRows) * 70) + 15;
                     p.Percent = Math.Clamp(calc, 15, 85);
+                    p.StageTitle = $"در حال استخراج و درج دسته‌ای شناسه‌ها (سطر {processedRows:N0} از حدود {totalEstimatedRows:N0})...";
                 }
                 else
                 {
                     p.Percent = Math.Min(80, 15 + (processedRows / 10000));
+                    p.StageTitle = $"در حال استخراج و درج دسته‌ای شناسه‌ها ({processedRows:N0} رکورد پردازش شد)...";
                 }
-                p.StageTitle = $"در حال استخراج و درج دسته‌ای شناسه‌ها ({processedRows:N0} رکورد پردازش شد)...";
             });
         }
 

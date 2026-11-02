@@ -1,5 +1,18 @@
 @inject Invoice.Code.ISelectedProfile profile
 @inject Invoice.Code.IScopedFields fields
+@{
+    var reqPath = Context.Request.Path.Value?.ToLowerInvariant() ?? "";
+    bool IsActive(params string[] paths)
+    {
+        foreach (var p in paths)
+        {
+            var lp = p.ToLowerInvariant();
+            if (reqPath == lp || reqPath.StartsWith(lp + "/") || reqPath.StartsWith(lp + "?"))
+                return true;
+        }
+        return false;
+    }
+}
 <!DOCTYPE html>
 <html lang="fa" dir="rtl">
 <head>
@@ -55,7 +68,7 @@
         <ul class="sidebar-menu">
             @if (User.IsInRole("reseller"))
             {
-                <li class="menu-item">
+                <li class="menu-item profile-selector-item">
                     <form method="post" id="profileForm" asp-page="/Index" asp-page-handler="SelectProfile">
                         <div class="selected-profile-info" title="@profile.Profile">
                             <div class="profile-selector-header">
@@ -71,154 +84,246 @@
                         </div>
                     </form>
                 </li>
-                @*@if (profile.ProfileId!=null)
-                    {
-                        <li class="menu-item">
-                            <div class="selected-profile-info">
-                                <span class="menu-icon"><i class="fas fa-check-circle"></i></span>
-                                <span class="menu-text profile-name">@profile.ProfileName</span>
-                            </div>
-                        </li>
-                    }*@
-                @*<li class="menu-divider"></li>*@
             }
+
+            <li class="menu-item">
+                <a class="menu-link @(reqPath == "" || reqPath == "/" || reqPath == "/index" ? "active" : "")" asp-area="" asp-page="/Index" title="پیشخوان">
+                    <span class="menu-icon"><i class="fas fa-home"></i></span>
+                    <span class="menu-text">پیشخوان</span>
+                </a>
+            </li>
 
             @if (User.IsInRole("admin"))
             {
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/admin/users/index" title="مدیریت کاربران">
-                        <span class="menu-icon"><i class="fas fa-users"></i></span>
-                        <span class="menu-text">مدیریت کاربران</span>
+                @* 1. کاربران و پرونده‌ها *@
+                <li class="menu-item menu-dropdown @(IsActive("/admin/users", "/admin/requests") ? "open" : "")">
+                    <a href="javascript:void(0)" class="menu-link category-toggle" title="کاربران و پرونده‌ها">
+                        <span class="menu-icon"><i class="fas fa-users-cog"></i></span>
+                        <span class="menu-text">کاربران و پرونده‌ها</span>
+                        <span class="menu-arrow"><i class="fas fa-chevron-left"></i></span>
                     </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/admin/users/profiles" title="لیست پروفایل ها">
-                        <span class="menu-icon"><i class="fas fa-id-card"></i></span>
-                        <span class="menu-text">لیست پروفایل ها</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/admin/transaction/index" title="درخواست اعتبار">
-                        <span class="menu-icon"><i class="fas fa-credit-card"></i></span>
-                        <span class="menu-text">درخواست اعتبار</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/admin/requests/index" title="درخواست کارپوشه">
-                        <span class="menu-icon"><i class="fas fa-folder-open"></i></span>
-                        <span class="menu-text">درخواست کارپوشه</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/invoiceManage/customerledger" title="مدیریت مالی مشتریان">
-                        <span class="menu-icon"><i class="fas fa-chart-line"></i></span>
-                        <span class="menu-text">مدیریت مالی مشتریان</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/stuff/index" title="مدیریت کالا و خدمات (منتخب)">
-                        <span class="menu-icon"><i class="fas fa-boxes"></i></span>
-                        <span class="menu-text">کالا و خدمات (منتخب)</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/admin/stuffs/index" title="شناسه‌های کالا و خدمات (اکسل)">
-                        <span class="menu-icon"><i class="fas fa-barcode"></i></span>
-                        <span class="menu-text">شناسه‌های کالا و خدمات</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/admin/databasebackup/index" title="پشتیبان‌گیری دیتابیس">
-                        <span class="menu-icon"><i class="fas fa-database"></i></span>
-                        <span class="menu-text">پشتیبان‌گیری دیتابیس</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/admin/activitylogs/index" title="گزارش فعالیت کاربران">
-                        <span class="menu-icon"><i class="fas fa-clipboard-list"></i></span>
-                        <span class="menu-text">گزارش فعالیت کاربران</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/admin/bale/index" title="اطلاع‌رسانی بله">
-                        <span class="menu-icon"><i class="fas fa-paper-plane"></i></span>
-                        <span class="menu-text">اطلاع‌رسانی بله</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/admin/bale/sendmessage" title="ارسال پیام به کاربران بله">
-                        <span class="menu-icon"><i class="fas fa-bullhorn"></i></span>
-                        <span class="menu-text">ارسال پیام بله</span>
-                    </a>
+                    <ul class="submenu">
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/admin/users/index") ? "active" : "")" asp-area="" asp-page="/admin/users/index">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">مدیریت کاربران</span>
+                            </a>
+                        </li>
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/admin/users/profiles") ? "active" : "")" asp-area="" asp-page="/admin/users/profiles">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">لیست پروفایل‌ها</span>
+                            </a>
+                        </li>
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/admin/requests/index") ? "active" : "")" asp-area="" asp-page="/admin/requests/index">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">درخواست کارپوشه</span>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
 
+                @* 2. امور مالی و اعتبارات *@
+                <li class="menu-item menu-dropdown @(IsActive("/admin/transaction", "/invoicemanage/customerledger") ? "open" : "")">
+                    <a href="javascript:void(0)" class="menu-link category-toggle" title="امور مالی و اعتبارات">
+                        <span class="menu-icon"><i class="fas fa-wallet"></i></span>
+                        <span class="menu-text">امور مالی و اعتبارات</span>
+                        <span class="menu-arrow"><i class="fas fa-chevron-left"></i></span>
+                    </a>
+                    <ul class="submenu">
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/admin/transaction/index") ? "active" : "")" asp-area="" asp-page="/admin/transaction/index">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">درخواست اعتبار</span>
+                            </a>
+                        </li>
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/invoicemanage/customerledger") ? "active" : "")" asp-area="" asp-page="/invoiceManage/customerledger">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">مدیریت مالی مشتریان</span>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+
+                @* 3. کالا و خدمات *@
+                <li class="menu-item menu-dropdown @(IsActive("/stuff", "/admin/stuffs") ? "open" : "")">
+                    <a href="javascript:void(0)" class="menu-link category-toggle" title="کالا و خدمات">
+                        <span class="menu-icon"><i class="fas fa-boxes"></i></span>
+                        <span class="menu-text">کالا و خدمات</span>
+                        <span class="menu-arrow"><i class="fas fa-chevron-left"></i></span>
+                    </a>
+                    <ul class="submenu">
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/stuff/index") ? "active" : "")" asp-area="" asp-page="/stuff/index">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">کالا و خدمات (منتخب)</span>
+                            </a>
+                        </li>
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/admin/stuffs") ? "active" : "")" asp-area="" asp-page="/admin/stuffs/index">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">شناسه‌های کالا و خدمات</span>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+
+                @* 4. پیام‌رسان بله *@
+                <li class="menu-item menu-dropdown @(IsActive("/admin/bale") ? "open" : "")">
+                    <a href="javascript:void(0)" class="menu-link category-toggle" title="پیام‌رسان بله">
+                        <span class="menu-icon"><i class="fas fa-paper-plane"></i></span>
+                        <span class="menu-text">پیام‌رسان بله</span>
+                        <span class="menu-arrow"><i class="fas fa-chevron-left"></i></span>
+                    </a>
+                    <ul class="submenu">
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/admin/bale/index") ? "active" : "")" asp-area="" asp-page="/admin/bale/index">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">اطلاع‌رسانی بله</span>
+                            </a>
+                        </li>
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/admin/bale/sendmessage") ? "active" : "")" asp-area="" asp-page="/admin/bale/sendmessage">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">ارسال پیام بله</span>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+
+                @* 5. سیستم و نظارت *@
+                <li class="menu-item menu-dropdown @(IsActive("/admin/databasebackup", "/admin/activitylogs") ? "open" : "")">
+                    <a href="javascript:void(0)" class="menu-link category-toggle" title="سیستم و نظارت">
+                        <span class="menu-icon"><i class="fas fa-shield-alt"></i></span>
+                        <span class="menu-text">سیستم و نظارت</span>
+                        <span class="menu-arrow"><i class="fas fa-chevron-left"></i></span>
+                    </a>
+                    <ul class="submenu">
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/admin/databasebackup") ? "active" : "")" asp-area="" asp-page="/admin/databasebackup/index">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">پشتیبان‌گیری دیتابیس</span>
+                            </a>
+                        </li>
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/admin/activitylogs") ? "active" : "")" asp-area="" asp-page="/admin/activitylogs/index">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">گزارش فعالیت کاربران</span>
+                            </a>
+                        </li>
+                    </ul>
+                </li>
             }
             else
             {
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/invoicemanage/createheader" title="فاکتور جدید">
-                        <span class="menu-icon"><i class="fas fa-plus"></i></span>
-                        <span class="menu-text">فاکتور جدید</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/invoicemanage/ImportGroupFactor" title="ارسال گروهی">
-                        <span class="menu-icon"><i class="fas fa-layer-group-plus"></i></span>
-                        <span class="menu-text">ارسال گروهی</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/invoicemanage/index" title="لیست فاکتور">
+                @* 1. مدیریت صورتحساب *@
+                <li class="menu-item menu-dropdown @(IsActive("/invoicemanage/createheader", "/invoicemanage/importgroupfactor", "/invoicemanage/index", "/invoicemanage/manualinvoicecancel") ? "open" : "")">
+                    <a href="javascript:void(0)" class="menu-link category-toggle" title="مدیریت صورتحساب">
                         <span class="menu-icon"><i class="fas fa-file-invoice"></i></span>
-                        <span class="menu-text">لیست فاکتور</span>
+                        <span class="menu-text">مدیریت صورتحساب</span>
+                        <span class="menu-arrow"><i class="fas fa-chevron-left"></i></span>
                     </a>
+                    <ul class="submenu">
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/invoicemanage/createheader") ? "active" : "")" asp-area="" asp-page="/invoicemanage/createheader">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">فاکتور جدید</span>
+                            </a>
+                        </li>
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/invoicemanage/importgroupfactor") ? "active" : "")" asp-area="" asp-page="/invoicemanage/ImportGroupFactor">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">ارسال گروهی (اکسل)</span>
+                            </a>
+                        </li>
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/invoicemanage/index") ? "active" : "")" asp-area="" asp-page="/invoicemanage/index">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">لیست فاکتورها</span>
+                            </a>
+                        </li>
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/invoicemanage/manualinvoicecancel") ? "active" : "")" asp-area="" asp-page="/invoicemanage/manualinvoicecancel">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">ابطال فاکتور</span>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
-                @if (User.IsInRole("reseller") || User.IsInRole("admin"))
-                {
-                    <li class="menu-item">
-                        <a class="menu-link" asp-area="" asp-page="/invoicemanage/customerledger" title="مدیریت مالی مشتریان">
-                            <span class="menu-icon"><i class="fas fa-chart-line"></i></span>
-                            <span class="menu-text">مدیریت مالی مشتریان</span>
-                        </a>
-                    </li>
-                }
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/invoicemanage/manualinvoicecancel" title="ابطال فاکتور">
-                        <span class="menu-icon"><i class="fas fa-ban"></i></span>
-                        <span class="menu-text">ابطال فاکتور</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/stuff/index" title="مدیریت کالا و خدمات (منتخب)">
-                        <span class="menu-icon"><i class="fas fa-boxes text-primary"></i></span>
-                        <span class="menu-text">کالا و خدمات (منتخب)</span>
-                    </a>
-                </li>
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/credit/vallet" title="کیف پول من">
-                        <span class="menu-icon"><i class="fas fa-wallet"></i></span>
-                        <span class="menu-text">کیف پول من</span>
-                    </a>
-                </li>
-                @if (User.IsInRole("user"))
-                {
-                    <li class="menu-item">
-                        <a class="menu-link" asp-area="" asp-page="/credit/creditrequest" title="تمدید دوره">
-                            <span class="menu-icon"><i class="fas fa-sync"></i></span>
-                            <span class="menu-text">تمدید دوره</span>
-                        </a>
-                    </li>
-                }
 
-            }
-            @if (User.IsInRole("reseller"))
-            {
-                <li class="menu-item">
-                    <a class="menu-link" asp-area="" asp-page="/admin/users/profiles" title="مدیریت پروفایل">
-                        <span class="menu-icon"><i class="fas fa-tasks"></i></span>
-                        <span class="menu-text">مدیریت پروفایل</span>
+                @* 2. کالا و خدمات *@
+                <li class="menu-item menu-dropdown @(IsActive("/stuff") ? "open" : "")">
+                    <a href="javascript:void(0)" class="menu-link category-toggle" title="کالا و خدمات">
+                        <span class="menu-icon"><i class="fas fa-boxes"></i></span>
+                        <span class="menu-text">کالا و خدمات</span>
+                        <span class="menu-arrow"><i class="fas fa-chevron-left"></i></span>
                     </a>
+                    <ul class="submenu">
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/stuff/index") ? "active" : "")" asp-area="" asp-page="/stuff/index">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">کالا و خدمات (منتخب)</span>
+                            </a>
+                        </li>
+                    </ul>
                 </li>
+
+                @* 3. امور مالی و کیف پول *@
+                <li class="menu-item menu-dropdown @(IsActive("/credit", "/invoicemanage/customerledger") ? "open" : "")">
+                    <a href="javascript:void(0)" class="menu-link category-toggle" title="امور مالی و کیف پول">
+                        <span class="menu-icon"><i class="fas fa-wallet"></i></span>
+                        <span class="menu-text">امور مالی و کیف پول</span>
+                        <span class="menu-arrow"><i class="fas fa-chevron-left"></i></span>
+                    </a>
+                    <ul class="submenu">
+                        <li class="submenu-item">
+                            <a class="submenu-link @(IsActive("/credit/vallet") ? "active" : "")" asp-area="" asp-page="/credit/vallet">
+                                <i class="fas fa-circle submenu-bullet"></i>
+                                <span class="submenu-text">کیف پول من</span>
+                            </a>
+                        </li>
+                        @if (User.IsInRole("user"))
+                        {
+                            <li class="submenu-item">
+                                <a class="submenu-link @(IsActive("/credit/creditrequest") ? "active" : "")" asp-area="" asp-page="/credit/creditrequest">
+                                    <i class="fas fa-circle submenu-bullet"></i>
+                                    <span class="submenu-text">تمدید دوره</span>
+                                </a>
+                            </li>
+                        }
+                        @if (User.IsInRole("reseller") || User.IsInRole("admin"))
+                        {
+                            <li class="submenu-item">
+                                <a class="submenu-link @(IsActive("/invoicemanage/customerledger") ? "active" : "")" asp-area="" asp-page="/invoiceManage/customerledger">
+                                    <i class="fas fa-circle submenu-bullet"></i>
+                                    <span class="submenu-text">مدیریت مالی مشتریان</span>
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                </li>
+
+                @if (User.IsInRole("reseller"))
+                {
+                    @* 4. پنل نمایندگی *@
+                    <li class="menu-item menu-dropdown @(IsActive("/admin/users/profiles") ? "open" : "")">
+                        <a href="javascript:void(0)" class="menu-link category-toggle" title="پنل نمایندگی">
+                            <span class="menu-icon"><i class="fas fa-user-shield"></i></span>
+                            <span class="menu-text">پنل نمایندگی</span>
+                            <span class="menu-arrow"><i class="fas fa-chevron-left"></i></span>
+                        </a>
+                        <ul class="submenu">
+                            <li class="submenu-item">
+                                <a class="submenu-link @(IsActive("/admin/users/profiles") ? "active" : "")" asp-area="" asp-page="/admin/users/profiles">
+                                    <i class="fas fa-circle submenu-bullet"></i>
+                                    <span class="submenu-text">مدیریت پروفایل‌ها</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </li>
+                }
             }
         </ul>
 
@@ -401,9 +506,30 @@
                     mobileMenuOverlay.classList.remove('active');
                 });
 
-                // Close menu when clicking on a menu item
-                const menuLinks = document.querySelectorAll('.menu-link');
-                menuLinks.forEach(link => {
+                // Accordion toggle for category menus
+                const categoryToggles = document.querySelectorAll('.category-toggle');
+                categoryToggles.forEach(toggle => {
+                    toggle.addEventListener('click', function (e) {
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        const dropdown = this.closest('.menu-dropdown');
+                        if (!dropdown) return;
+
+                        // If sidebar is collapsed on desktop, open it so submenu is visible
+                        if (window.innerWidth > 768 && !sidebar.classList.contains('sidebar-open')) {
+                            sidebar.classList.add('sidebar-open');
+                            menuState = setLoaderRight();
+                            setMenuState(true);
+                        }
+
+                        dropdown.classList.toggle('open');
+                    });
+                });
+
+                // Close mobile menu only when clicking an actual navigation link (not category toggle)
+                const navLinks = document.querySelectorAll('.menu-link:not(.category-toggle), .submenu-link');
+                navLinks.forEach(link => {
                     link.addEventListener('click', function () {
                         if (window.innerWidth <= 768) {
                             sidebar.classList.remove('mobile-open');
@@ -411,38 +537,26 @@
                         }
                     });
                 });
+
                 const profileLink = document.querySelector('.user-profile');
-                profileLink.addEventListener('click', function () {
-                    if (window.innerWidth > 768) {
-                        if (menuState == false) {
-                            sidebar.classList.toggle('sidebar-open');
-                            menuState = setLoaderRight();
-                            setMenuState(menuState);
+                if (profileLink) {
+                    profileLink.addEventListener('click', function () {
+                        if (window.innerWidth > 768) {
+                            if (menuState == false) {
+                                sidebar.classList.toggle('sidebar-open');
+                                menuState = setLoaderRight();
+                                setMenuState(menuState);
+                            }
                         }
-                    }
-                });
+                    });
+                }
             }
 
-            // Active menu item based on current page
-            const currentPath = window.location.pathname.toLowerCase();
-            const menuLinks = document.querySelectorAll('.menu-link');
-
-            menuLinks.forEach(link => {
-                link.classList.remove('active');
-                const aspPage = link.getAttribute('asp-page');
-
-                if (aspPage && currentPath == aspPage.toLowerCase()) {
-                    link.classList.add('active');
-                }
-            });
-
-            if (!document.querySelector('.menu-link.active')) {
-                menuLinks.forEach(link => {
-                    const href = link.getAttribute('href');
-                    if (href && href !== '#' && currentPath == href.toLowerCase()) {
-                        link.classList.add('active');
-                    }
-                });
+            // Active menu item and parent dropdown synchronization
+            const activeSub = document.querySelector('.submenu-link.active');
+            if (activeSub) {
+                const parentDropdown = activeSub.closest('.menu-dropdown');
+                if (parentDropdown) parentDropdown.classList.add('open');
             }
         });
     </script>

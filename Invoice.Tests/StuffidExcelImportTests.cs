@@ -251,5 +251,85 @@ namespace Invoice.Tests
                 }
             }
         }
+
+        [Fact]
+        public async Task OnPostAsync_AjaxRequest_StartsBackgroundJobAndReturnsImmediatelyWithStartedTrue()
+        {
+            // Arrange
+            var tempExcelPath = Path.Combine(Path.GetTempPath(), $"stuff_ajax_test_{Guid.NewGuid():N}.xlsx");
+            try
+            {
+                var doc = new ExcelDoc();
+                doc.ColumnHeaders.AddRange(new[] { "شناسه کالا/خدمت", "شرح کالا/خدمت", "نرخ ارزش افزوده", "مشمول", "تاریخ انقضا" });
+
+                var r1 = new ExcelRow();
+                r1.Cells.AddRange(new[] { "2901790000001", "کالای آزمایشی پس‌زمینه ۱", "10", "مشمول", "" });
+                doc.Rows.Add(r1);
+
+                var r2 = new ExcelRow();
+                r2.Cells.AddRange(new[] { "2901790000002", "کالای آزمایشی پس‌زمینه ۲", "10", "مشمول", "" });
+                doc.Rows.Add(r2);
+
+                ExcelHelp.Save(doc, tempExcelPath);
+
+                using var fs = File.OpenRead(tempExcelPath);
+                var formFile = new FormFile(fs, 0, fs.Length, "ExcelFile", "background_stuff_test.xlsx")
+                {
+                    Headers = new HeaderDictionary(),
+                    ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                };
+
+                var httpContext = new DefaultHttpContext();
+                httpContext.Request.Headers["X-Requested-With"] = "XMLHttpRequest";
+
+                var pageModel = new ImportModel(_context, _activityLoggerMock.Object, _loggerMock.Object)
+                {
+                    PageContext = new PageContext { HttpContext = httpContext },
+                    ExcelFile = formFile,
+                    UpdateExisting = true,
+                    TaskId = "test_bg_task_" + Guid.NewGuid().ToString("N")
+                };
+
+                // Act
+                var result = await pageModel.OnPostAsync();
+
+                // Assert
+                var jsonResult = Assert.IsType<JsonResult>(result);
+                Assert.NotNull(jsonResult.Value);
+
+                var jsonStr = System.Text.Json.JsonSerializer.Serialize(jsonResult.Value);
+                using var jsonDoc = System.Text.Json.JsonDocument.Parse(jsonStr);
+                var root = jsonDoc.RootElement;
+
+                Assert.True(root.GetProperty("success").GetBoolean());
+                Assert.True(root.GetProperty("started").GetBoolean());
+                Assert.Equal(pageModel.TaskId, root.GetProperty("taskId").GetString());
+
+                // بررسی متد OnGetProgress
+                var progressResult = pageModel.OnGetProgress(pageModel.TaskId);
+                var progressJson = Assert.IsType<JsonResult>(progressResult);
+                Assert.NotNull(progressJson.Value);
+
+                // صبر برای تکمیل تسک پس‌زمینه
+                for (int i = 0; i < 20; i++)
+                {
+                    var state = StuffImportProgressTracker.Get(pageModel.TaskId);
+                    if (state != null && state.IsCompleted) break;
+                    await Task.Delay(100);
+                }
+
+                var finalState = StuffImportProgressTracker.Get(pageModel.TaskId);
+                Assert.NotNull(finalState);
+                Assert.True(finalState.IsCompleted);
+                Assert.Equal(2, finalState.InsertedCount);
+            }
+            finally
+            {
+                if (File.Exists(tempExcelPath))
+                {
+                    try { File.Delete(tempExcelPath); } catch { }
+                }
+            }
+        }
     }
 }

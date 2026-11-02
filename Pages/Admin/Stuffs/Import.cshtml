@@ -322,14 +322,23 @@
                         try {
                             const res = JSON.parse(xhr.responseText);
                             if (res.success) {
+                                if (res.started) {
+                                    stageBadge.className = 'badge bg-primary text-white';
+                                    stageBadge.textContent = 'مرحله ۲ از ۲: استخراج و درج فوق‌سریع در دیتابیس';
+                                    statusMessage.textContent = 'فایل به سرور رسید. در حال آغاز استخراج و ذخیره دسته‌ای در پس‌زمینه...';
+                                    startPollingProgress(taskId);
+                                    return;
+                                }
                                 completeSuccess(res);
                             } else {
                                 showError(res.message || 'خطا در انجام عملیات بارگذاری.');
                             }
                         } catch (ex) {
-                            // در صورتی که پاسخ اچ‌تی‌ام‌ال بود
-                            checkFinalStatus(taskId);
+                            startPollingProgress(taskId);
                         }
+                    } else if (xhr.status === 502 || xhr.status === 504) {
+                        console.warn('Proxy returned status ' + xhr.status + ', checking background progress...');
+                        startPollingProgress(taskId);
                     } else {
                         showError('خطای سرور با کد ' + xhr.status + ': ممکن است حجم فایل بیش از حد مجاز باشد یا اتصال قطع شده باشد.');
                     }
