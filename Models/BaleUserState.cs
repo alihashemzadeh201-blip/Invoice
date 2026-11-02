@@ -15,6 +15,8 @@ namespace Invoice.Models
         [MaxLength(100)]
         public string CurrentStep { get; set; } = "None";
 
+        public int? ActiveProfileId { get; set; }
+
         public string? StateDataJson { get; set; }
 
         public DateTime LastUpdated { get; set; } = DateTime.Now;

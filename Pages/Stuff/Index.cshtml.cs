@@ -19,15 +19,70 @@ namespace Invoice.Pages.StuffPages
         private readonly DataContext _context;
         private readonly IUserActivityLogger _activityLogger;
         private readonly ILogger<IndexModel> _logger;
+        private readonly ISelectedProfile? _selectedProfile;
 
         public IndexModel(
             DataContext context,
             IUserActivityLogger activityLogger,
-            ILogger<IndexModel> logger)
+            ILogger<IndexModel> logger,
+            ISelectedProfile? selectedProfile = null)
         {
             _context = context;
             _activityLogger = activityLogger;
             _logger = logger;
+            _selectedProfile = selectedProfile;
+        }
+
+        private async Task<List<string>> GetEffectiveUsernamesAsync()
+        {
+            var usernames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var currentUsername = User.Identity?.Name;
+            if (!string.IsNullOrWhiteSpace(currentUsername))
+            {
+                usernames.Add(currentUsername);
+            }
+
+            if (User.IsInRole("reseller") && _selectedProfile?.ProfileId != null && _selectedProfile.ProfileId > 0)
+            {
+                var targetProfileId = _selectedProfile.ProfileId.Value;
+                var profileUsers = await _context.Users
+                    .Where(u => u.ProfileId == targetProfileId)
+                    .Select(u => u.Username)
+                    .ToListAsync();
+                foreach (var u in profileUsers)
+                {
+                    if (!string.IsNullOrWhiteSpace(u)) usernames.Add(u);
+                }
+
+                var profile = _selectedProfile.Profile ?? await _context.Profiles.FindAsync(targetProfileId);
+                if (profile != null && !string.IsNullOrWhiteSpace(profile.Creator))
+                {
+                    usernames.Add(profile.Creator);
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(currentUsername))
+            {
+                var user = await _context.Users.FirstOrDefaultAsync(u => u.Username == currentUsername);
+                if (user?.ProfileId != null)
+                {
+                    var profile = await _context.Profiles.FindAsync(user.ProfileId.Value);
+                    if (profile != null && !string.IsNullOrWhiteSpace(profile.Creator))
+                    {
+                        usernames.Add(profile.Creator);
+                    }
+
+                    var siblingUsers = await _context.Users
+                        .Where(u => u.ProfileId == user.ProfileId.Value)
+                        .Select(u => u.Username)
+                        .ToListAsync();
+                    foreach (var su in siblingUsers)
+                    {
+                        if (!string.IsNullOrWhiteSpace(su)) usernames.Add(su);
+                    }
+                }
+            }
+
+            return usernames.ToList();
         }
 
         public class StuffItemViewModel
@@ -74,28 +129,8 @@ namespace Invoice.Pages.StuffPages
         public async Task<IActionResult> OnGetAsync()
         {
             var username = User.Identity?.Name ?? string.Empty;
+            var effectiveUsernames = await GetEffectiveUsernamesAsync();
             if (PageNumber < 1) PageNumber = 1;
-
-            FavoritesCount = await _context.UserFavoriteStuffs
-                .Where(f => f.Username == username)
-                .CountAsync();
-
-            // اگر کاربر هیچ علاقه‌مندی ندارد و تبی انتخاب نشده، به تب همه کالاها برود
-            if (string.IsNullOrWhiteSpace(Tab) || (Tab == "fav" && FavoritesCount == 0 && string.IsNullOrWhiteSpace(Search)))
-            {
-                Tab = FavoritesCount > 0 ? "fav" : "all";
-            }
-
-            // کدهای موجود در علاقه‌مندی‌ها و در لیست محصولات کاربر
-            var favoriteCodes = await _context.UserFavoriteStuffs
-                .Where(f => f.Username == username)
-                .ToDictionaryAsync(f => f.StuffCode, f => f.AddedDate, StringComparer.OrdinalIgnoreCase);
-
-            var userProducts = await _context.Products
-                .Include(p => p.MeasureUnit)
-                .Where(p => p.Creator == username)
-                .AsNoTracking()
-                .ToDictionaryAsync(p => p.Sstid, p => p, StringComparer.OrdinalIgnoreCase);
 
             MeasureUnits = await _context.MeasureUnits
                 .AsNoTracking()
@@ -103,18 +138,94 @@ namespace Invoice.Pages.StuffPages
                 .ThenBy(m => m.Title)
                 .ToListAsync();
 
+            // ۱. دریافت تمامی کالاهای موجود در Products مربوط به کاربر یا پروفایل مشتری
+            var userProductsList = await _context.Products
+                .Include(p => p.MeasureUnit)
+                .Where(p => effectiveUsernames.Contains(p.Creator))
+                .AsNoTracking()
+                .ToListAsync();
+
+            var userProducts = new Dictionary<string, Product>(StringComparer.OrdinalIgnoreCase);
+            foreach (var p in userProductsList)
+            {
+                if (!string.IsNullOrWhiteSpace(p.Sstid) && !userProducts.ContainsKey(p.Sstid))
+                {
+                    userProducts[p.Sstid] = p;
+                }
+            }
+
+            // ۲. بررسی و همگام‌سازی خودکار کالاهای قبلی موجود در Products با علاقه‌مندی‌ها
+            var existingFavs = await _context.UserFavoriteStuffs
+                .Where(f => effectiveUsernames.Contains(f.Username))
+                .ToListAsync();
+
+            var existingFavCodes = existingFavs
+                .Select(f => f.StuffCode)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            bool dbNeedsSave = false;
+
+            if (!string.IsNullOrWhiteSpace(username))
+            {
+                foreach (var prod in userProductsList)
+                {
+                    if (!string.IsNullOrWhiteSpace(prod.Sstid))
+                    {
+                        if (!existingFavCodes.Contains(prod.Sstid))
+                        {
+                            var targetFavUser = !string.IsNullOrWhiteSpace(prod.Creator) ? prod.Creator : username;
+                            var newFav = new UserFavoriteStuff
+                            {
+                                Username = targetFavUser,
+                                StuffCode = prod.Sstid,
+                                AddedDate = DateTime.Now
+                            };
+                            _context.UserFavoriteStuffs.Add(newFav);
+                            existingFavs.Add(newFav);
+                            existingFavCodes.Add(prod.Sstid);
+                            dbNeedsSave = true;
+                        }
+                    }
+                }
+            }
+
+            if (dbNeedsSave)
+            {
+                await _context.SaveChangesAsync();
+            }
+
+            FavoritesCount = existingFavCodes.Count;
+
+            // تب پیش‌فرض همواره کالاهای منتخب (fav) است و در صورت خالی بودن، وضعیت خالی نمایش داده می‌شود نه کل کالاها
+            if (string.IsNullOrWhiteSpace(Tab))
+            {
+                Tab = "fav";
+            }
+
+            var favoriteCodes = existingFavs
+                .GroupBy(f => f.StuffCode, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Max(x => x.AddedDate), StringComparer.OrdinalIgnoreCase);
+
             if (Tab == "fav")
             {
                 var favQuery = _context.UserFavoriteStuffs
                     .Include(f => f.Stuff)
-                    .Where(f => f.Username == username)
+                    .Where(f => effectiveUsernames.Contains(f.Username))
                     .AsNoTracking()
                     .AsQueryable();
 
                 if (!string.IsNullOrWhiteSpace(Search))
                 {
                     var term = Search.Trim();
-                    favQuery = favQuery.Where(f => f.StuffCode.Contains(term) || (f.Stuff != null && f.Stuff.Title.Contains(term)));
+                    var matchingProdCodes = userProductsList
+                        .Where(p => (!string.IsNullOrWhiteSpace(p.Sstid) && p.Sstid.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+                                    (!string.IsNullOrWhiteSpace(p.Sstt) && p.Sstt.Contains(term, StringComparison.OrdinalIgnoreCase)))
+                        .Select(p => p.Sstid)
+                        .ToList();
+
+                    favQuery = favQuery.Where(f => f.StuffCode.Contains(term) ||
+                                                   (f.Stuff != null && f.Stuff.Title.Contains(term)) ||
+                                                   matchingProdCodes.Contains(f.StuffCode));
                 }
 
                 TotalCount = await favQuery.CountAsync();
@@ -129,9 +240,9 @@ namespace Invoice.Pages.StuffPages
                 {
                     userProducts.TryGetValue(f.StuffCode, out var prod);
                     var title = prod?.Sstt ?? f.Stuff?.Title ?? "بدون شرح";
-                    var vatRate = f.Stuff?.VatRate ?? (prod != null ? (int)prod.Vra : 0);
+                    var vatRate = f.Stuff?.VatRate ?? (prod != null ? (int)prod.Vra : 10);
                     var type = f.Stuff?.Type ?? prod?.StuffType ?? StuffType.شناسه_عمومی_تولید_داخل_کالا;
-                    var vatTax = f.Stuff?.VatTax ?? true;
+                    var vatTax = f.Stuff?.VatTax ?? (prod != null ? prod.Vra != VatRate.معاف : true);
 
                     return new StuffItemViewModel
                     {
@@ -496,6 +607,105 @@ namespace Invoice.Pages.StuffPages
 
             SuccessMessage = successMsg;
             return RedirectToPage(new { Tab = returnTab ?? "fav", Search = search, PageNumber = pageNumber });
+        }
+
+        public async Task<IActionResult> OnPostCreateCustomProductAsync(
+            string sstid,
+            string sstt,
+            StuffType stuffType,
+            string? mu,
+            decimal? fee,
+            VatRate vra)
+        {
+            var username = User.Identity?.Name;
+            if (string.IsNullOrWhiteSpace(username))
+            {
+                return new JsonResult(new { success = false, message = "کاربر وارد سامانه نشده است." });
+            }
+
+            if (string.IsNullOrWhiteSpace(sstid) || sstid.Trim().Length != 13 || !sstid.Trim().All(char.IsDigit))
+            {
+                return new JsonResult(new { success = false, message = "شناسه کالا/خدمت باید دقیقاً یک عدد ۱۳ رقمی باشد." });
+            }
+
+            if (string.IsNullOrWhiteSpace(sstt))
+            {
+                return new JsonResult(new { success = false, message = "وارد کردن شرح کالا/خدمت الزامی است." });
+            }
+
+            sstid = sstid.Trim();
+            sstt = sstt.Trim();
+            mu = string.IsNullOrWhiteSpace(mu) ? null : mu.Trim();
+
+            // ۱. ثبت یا به‌روزرسانی در جدول Products
+            var prod = await _context.Products.FirstOrDefaultAsync(p => p.Creator == username && p.Sstid == sstid);
+            if (prod == null)
+            {
+                prod = new Product
+                {
+                    Sstid = sstid,
+                    Sstt = sstt,
+                    StuffType = stuffType,
+                    Vra = vra,
+                    Creator = username,
+                    Fee = fee ?? 0,
+                    Mu = mu
+                };
+                _context.Products.Add(prod);
+            }
+            else
+            {
+                prod.Sstt = sstt;
+                prod.StuffType = stuffType;
+                prod.Vra = vra;
+                prod.Fee = fee ?? 0;
+                prod.Mu = mu;
+            }
+
+            // ۲. افزودن خودکار به UserFavoriteStuffs کاربر (بدون افزودن به جدول عمومی Stuffs جهت ایزوله‌سازی کالا برای این مشتری)
+            var fav = await _context.UserFavoriteStuffs.FirstOrDefaultAsync(f => f.Username == username && f.StuffCode == sstid);
+            if (fav == null)
+            {
+                _context.UserFavoriteStuffs.Add(new UserFavoriteStuff
+                {
+                    Username = username,
+                    StuffCode = sstid,
+                    AddedDate = DateTime.Now
+                });
+            }
+
+            await _context.SaveChangesAsync();
+
+            string? muTitle = null;
+            if (!string.IsNullOrWhiteSpace(prod.Mu))
+            {
+                var measureUnit = await _context.MeasureUnits.FirstOrDefaultAsync(m => m.Code == prod.Mu);
+                muTitle = measureUnit?.Title;
+            }
+
+            var favCount = await _context.UserFavoriteStuffs.CountAsync(f => f.Username == username);
+
+            await _activityLogger.LogAsync(
+                "کالا/خدمت",
+                "ثبت دستی کالا",
+                $"ثبت دستی کالا «{sstt}» با شناسه {sstid} و افزودن به کالاهای منتخب",
+                entityId: prod.Id.ToString());
+
+            return new JsonResult(new
+            {
+                success = true,
+                message = $"کالای «{sstt}» با شناسه {sstid} با موفقیت ثبت و به کالاهای منتخب افزوده شد.",
+                code = sstid,
+                title = sstt,
+                type = stuffType.ToString().Replace("_", " "),
+                fee = prod.Fee ?? 0,
+                feeFormatted = (prod.Fee.HasValue && prod.Fee > 0) ? $"{prod.Fee.Value:N0} ریال" : "۰ ریال",
+                mu = prod.Mu ?? "",
+                muTitle = muTitle ?? "تعیین‌نشده",
+                vra = (int)vra,
+                vatRatePercent = (int)vra,
+                favoritesCount = favCount
+            });
         }
     }
 }

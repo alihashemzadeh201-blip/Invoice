@@ -15,7 +15,10 @@
                 انتخاب شناسه‌های کالا و خدمات سامانه مودیان، تعیین قیمت واحد (فی) و واحد سنجش برای صدور سریع فاکتور
             </span>
         </div>
-        <div>
+        <div class="d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-success btn-sm shadow-sm" data-bs-toggle="modal" data-bs-target="#createCustomProductModal">
+                <i class="fas fa-plus-circle me-1"></i> افزودن دستی کالا / خدمت
+            </button>
             <span class="badge bg-light text-secondary border px-3 py-2">
                 <i class="fas fa-check-circle text-success me-1"></i> متصل به صدور فاکتور
             </span>
@@ -160,6 +163,81 @@
                 <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
                 <button type="button" class="btn btn-success btn-sm px-3" id="modalSaveBtn">
                     <i class="fas fa-check me-1"></i> ذخیره تغییرات
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for Adding Custom Product Manually -->
+<div class="modal fade" id="createCustomProductModal" tabindex="-1" aria-labelledby="createCustomProductModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content shadow border-0">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title fs-6" id="createCustomProductModalLabel">
+                    <i class="fas fa-plus-circle me-1"></i> افزودن دستی کالا / خدمت به کالاهای منتخب
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="بستن"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="createCustomProductForm" onsubmit="return false;">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="createSstid" class="form-label small fw-bold">شناسه ۱۳ رقمی کالا/خدمت: <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control font-monospace text-start" id="createSstid" maxlength="13" placeholder="مثال: 2720000123456" dir="ltr" required />
+                            <div class="form-text text-muted small">شناسه ۱۳ رقمی عمومی یا اختصاصی دریافت شده از سامانه شناسه کالا.</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="createStuffType" class="form-label small fw-bold">نوع شناسه کالا/خدمت: <span class="text-danger">*</span></label>
+                            <select class="form-select" id="createStuffType">
+                                <option value="0">شناسه عمومی تولید داخل کالا</option>
+                                <option value="1">شناسه اختصاصی تولید داخل کالا</option>
+                                <option value="2">شناسه عمومی وارداتی کالا</option>
+                                <option value="3">شناسه اختصاصی وارداتی کالا</option>
+                                <option value="4">شناسه عمومی تولید داخل خدمت</option>
+                                <option value="5">شناسه اختصاصی تولید داخل خدمت</option>
+                                <option value="6">شناسه عمومی وارداتی خدمت</option>
+                                <option value="7">شناسه اختصاصی وارداتی خدمت</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label for="createSstt" class="form-label small fw-bold">شرح کالا/خدمت: <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="createSstt" placeholder="نام یا شرح کامل کالا/خدمت..." required />
+                        </div>
+                        <div class="col-md-4">
+                            <label for="createMu" class="form-label small fw-bold">واحد سنجش / اندازه‌گیری:</label>
+                            <select class="form-select" id="createMu">
+                                <option value="">-- بدون واحد سنجش (انتخاب کنید) --</option>
+                                @foreach (var mu in Model.MeasureUnits)
+                                {
+                                    <option value="@mu.Code">@mu.Title (@mu.Code)</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="createFee" class="form-label small fw-bold">مبلغ واحد / فی (ریال):</label>
+                            <div class="input-group">
+                                <input type="text" class="form-control font-monospace text-end" id="createFee" dir="ltr" placeholder="0" />
+                                <span class="input-group-text bg-light text-muted">ریال</span>
+                            </div>
+                            <div class="form-text text-muted small mt-1" id="createFeeWords"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="createVra" class="form-label small fw-bold">نرخ مالیات بر ارزش افزوده: <span class="text-danger">*</span></label>
+                            <select class="form-select" id="createVra">
+                                <option value="0">معاف از مالیات (۰ درصد)</option>
+                                <option value="9">۹ درصد</option>
+                                <option value="10" selected>۱۰ درصد (پیش‌فرض)</option>
+                                <option value="16">۱۶ درصد</option>
+                            </select>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">انصراف</button>
+                <button type="button" class="btn btn-success btn-sm px-4" id="saveCustomProductBtn">
+                    <i class="fas fa-plus-circle me-1"></i> ثبت و افزودن به منتخب‌ها
                 </button>
             </div>
         </div>
@@ -597,6 +675,124 @@
                     modalSaveBtn.innerHTML = originalHtml;
                 }
             });
+
+            // المان‌های مودال ثبت دستی کالا
+            const createCustomProductModalEl = document.getElementById('createCustomProductModal');
+            const createSstid = document.getElementById('createSstid');
+            const createStuffType = document.getElementById('createStuffType');
+            const createSstt = document.getElementById('createSstt');
+            const createMu = document.getElementById('createMu');
+            const createFee = document.getElementById('createFee');
+            const createFeeWords = document.getElementById('createFeeWords');
+            const createVra = document.getElementById('createVra');
+            const saveCustomProductBtn = document.getElementById('saveCustomProductBtn');
+            let bsCreateModal = null;
+
+            if (createCustomProductModalEl && typeof bootstrap !== 'undefined') {
+                bsCreateModal = new bootstrap.Modal(createCustomProductModalEl);
+            }
+
+            if (createFee) {
+                createFee.addEventListener('input', function () {
+                    const formatted = formatNumber(this.value);
+                    this.value = formatted;
+                    if (formatted) {
+                        const cleanNum = parseInt(this.value.replace(/,/g, ''), 10);
+                        createFeeWords.textContent = `${cleanNum.toLocaleString('fa-IR')} ریال`;
+                    } else {
+                        createFeeWords.textContent = '';
+                    }
+                });
+            }
+
+            if (saveCustomProductBtn) {
+                saveCustomProductBtn.addEventListener('click', async function () {
+                    const sstid = createSstid.value.trim();
+                    const sstt = createSstt.value.trim();
+                    const stuffType = createStuffType.value;
+                    const mu = createMu.value;
+                    const cleanFee = createFee.value.replace(/[^0-9]/g, '');
+                    const fee = cleanFee ? parseInt(cleanFee, 10) : 0;
+                    const vra = createVra.value;
+
+                    if (!sstid || sstid.length !== 13 || !/^\d{13}$/.test(sstid)) {
+                        showToast('شناسه کالا/خدمت باید دقیقاً یک عدد ۱۳ رقمی باشد.', 'danger');
+                        createSstid.focus();
+                        return;
+                    }
+
+                    if (!sstt) {
+                        showToast('وارد کردن شرح کالا/خدمت الزامی است.', 'danger');
+                        createSstt.focus();
+                        return;
+                    }
+
+                    saveCustomProductBtn.disabled = true;
+                    const originalHtml = saveCustomProductBtn.innerHTML;
+                    saveCustomProductBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> در حال ثبت...';
+
+                    try {
+                        const formData = new FormData();
+                        formData.append('sstid', sstid);
+                        formData.append('sstt', sstt);
+                        formData.append('stuffType', stuffType);
+                        formData.append('mu', mu);
+                        formData.append('fee', fee);
+                        formData.append('vra', vra);
+                        formData.append('__RequestVerificationToken', getAntiForgeryToken());
+
+                        const res = await fetch('/Stuff/Index?handler=CreateCustomProduct', {
+                            method: 'POST',
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest'
+                            },
+                            body: formData
+                        });
+
+                        const data = await res.json();
+                        if (data.success) {
+                            if (bsCreateModal) {
+                                bsCreateModal.hide();
+                            }
+                            createSstid.value = '';
+                            createSstt.value = '';
+                            createMu.value = '';
+                            createFee.value = '';
+                            createFeeWords.textContent = '';
+
+                            showToast(data.message, 'success');
+
+                            if (favCountBadge && typeof data.favoritesCount !== 'undefined') {
+                                favCountBadge.textContent = data.favoritesCount;
+                            }
+
+                            // سوئیچ خودکار به تب کالاهای منتخب
+                            currentTabInput.value = 'fav';
+                            tabLinks.forEach(l => {
+                                if (l.getAttribute('data-tab') === 'fav') {
+                                    l.classList.add('active');
+                                    const badge = l.querySelector('.badge');
+                                    if (badge) badge.className = 'badge bg-white text-primary rounded-pill ms-1';
+                                } else {
+                                    l.classList.remove('active');
+                                    const badge = l.querySelector('.badge');
+                                    if (badge) badge.className = 'badge bg-warning text-dark rounded-pill ms-1';
+                                }
+                            });
+
+                            fetchTableData('fav', searchInput.value, 1);
+                        } else {
+                            showToast(data.message || 'خطا در ثبت کالا', 'danger');
+                        }
+                    } catch (err) {
+                        console.error('Create custom product error:', err);
+                        showToast('خطا در برقراری ارتباط با سرور', 'danger');
+                    } finally {
+                        saveCustomProductBtn.disabled = false;
+                        saveCustomProductBtn.innerHTML = originalHtml;
+                    }
+                });
+            }
 
             // مدیریت دکمه بازگشت تاریخچه مرورگر (Back/Forward)
             window.addEventListener('popstate', function (e) {

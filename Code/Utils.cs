@@ -85,8 +85,9 @@ public class Utils
         }
         return message;
     }
-    public static string ConvertPersianNumberToEnglish(string numberStr)
+    public static string ConvertPersianNumberToEnglish(string? numberStr)
     {
+        if (string.IsNullOrEmpty(numberStr)) return string.Empty;
         var result = "";
         var persian = new char[] { '۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹' };
         foreach (var item in numberStr)
@@ -96,8 +97,9 @@ public class Utils
         }
         return result;
     }
-    public static string ConvertEnglishNumberToPersian(string numberStr)
+    public static string ConvertEnglishNumberToPersian(string? numberStr)
     {
+        if (string.IsNullOrEmpty(numberStr)) return string.Empty;
         var result = "";
         var persian = new char[] { '۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹' };
         foreach (var item in numberStr)

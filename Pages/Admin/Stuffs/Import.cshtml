@@ -25,28 +25,35 @@
 
     <div class="row g-3">
         <div class="col-lg-7">
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-light py-3">
+            <!-- کارت فرم آپلود -->
+            <div class="card shadow-sm border-0 mb-3" id="uploadFormCard">
+                <div class="card-header bg-light py-3 d-flex justify-content-between align-items-center">
                     <h5 class="card-title mb-0 text-secondary">
                         <i class="fas fa-upload me-2 text-success"></i> فرم انتخاب و بارگذاری فایل اکسل
                     </h5>
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                        پشتیبانی از ۳ میلیون رکورد
+                    </span>
                 </div>
                 <div class="card-body p-4">
-                    <form method="post" enctype="multipart/form-data">
+                    <form id="importForm" method="post" enctype="multipart/form-data">
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="TaskId" id="hiddenTaskId" value="" />
+
                         <div class="mb-4">
                             <label asp-for="ExcelFile" class="form-label fw-bold"></label>
                             <div class="input-group">
                                 <span class="input-group-text bg-light"><i class="fas fa-file-excel text-success"></i></span>
-                                <input asp-for="ExcelFile" type="file" class="form-control" accept=".xlsx" required />
+                                <input asp-for="ExcelFile" id="excelFileInput" type="file" class="form-control" accept=".xlsx" required />
                             </div>
                             <span asp-validation-for="ExcelFile" class="text-danger small"></span>
                             <div class="form-text small text-muted mt-2">
-                                فرمت فایل باید استاندارد اکسل (<code>.xlsx</code>) باشد. می‌توانید از قالب نمونه آماده دانلود نمایید.
+                                فرمت فایل باید استاندارد اکسل (<code>.xlsx</code>) باشد. موتور استریم پرسرعت با فناوری SqlBulkCopy فایل‌های حجیم و چندمیلیون سطری را بدون کُندی پردازش می‌کند.
                             </div>
                         </div>
 
                         <div class="form-check form-switch mb-4">
-                            <input asp-for="UpdateExisting" class="form-check-input" type="checkbox" id="updateExistingCheck" />
+                            <input asp-for="UpdateExisting" class="form-check-input" type="checkbox" id="updateExistingCheck" checked />
                             <label class="form-check-label fw-bold" for="updateExistingCheck">
                                 @Html.DisplayNameFor(m => m.UpdateExisting)
                             </label>
@@ -56,7 +63,7 @@
                         </div>
 
                         <div class="d-flex gap-2">
-                            <button type="submit" class="btn btn-success btn-lg flex-grow-1" onclick="this.disabled=true; this.innerHTML='<i class=\'fas fa-spinner fa-spin me-2\'></i> در حال بارگذاری و پردازش...'; this.form.submit();">
+                            <button type="submit" id="submitImportBtn" class="btn btn-success btn-lg flex-grow-1">
                                 <i class="fas fa-cloud-upload-alt me-2"></i> بارگذاری و ثبت در دیتابیس
                             </button>
                             <a asp-page="./Index" class="btn btn-outline-secondary btn-lg">
@@ -66,22 +73,113 @@
                     </form>
                 </div>
             </div>
+
+            <!-- کارت نوار پیشرفت زنده -->
+            <div class="card shadow-sm border-0 d-none" id="progressCard">
+                <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0 text-primary">
+                        <i class="fas fa-spinner fa-spin me-2 text-primary" id="progressSpinner"></i>
+                        <span id="progressCardHeader">در حال پردازش عملیات...</span>
+                    </h5>
+                    <span class="badge bg-info text-dark" id="stageBadge">مرحله ۱ از ۲: ارسال فایل</span>
+                </div>
+                <div class="card-body p-4">
+                    <!-- عنوان وضعیت جاری -->
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-bold text-dark" id="statusMessage">در حال آماده‌سازی برای بارگذاری...</span>
+                        <span class="badge bg-secondary fs-6" id="percentBadge">۰٪</span>
+                    </div>
+
+                    <!-- نوار پیشرفت -->
+                    <div class="progress mb-3" style="height: 26px; border-radius: 8px;">
+                        <div id="importProgressBar"
+                             class="progress-bar progress-bar-striped progress-bar-animated bg-primary fw-bold fs-6"
+                             role="progressbar"
+                             style="width: 0%;"
+                             aria-valuenow="0"
+                             aria-valuemin="0"
+                             aria-valuemax="100">
+                            ۰٪
+                        </div>
+                    </div>
+
+                    <div class="small text-muted mb-4 d-flex justify-content-between" id="progressSubDetails">
+                        <span id="transferredSize">حجم ارسالی: در حال محاسبه...</span>
+                        <span id="estimatedTime">لطفاً تا پایان عملیات این پنجره را نبندید</span>
+                    </div>
+
+                    <!-- کارت‌های زنده آمار ثبت در دیتابیس -->
+                    <div class="row g-2 text-center" id="liveStatsContainer">
+                        <div class="col-6 col-sm-3">
+                            <div class="p-2 border rounded bg-light">
+                                <div class="text-muted small">ردیف‌های پردازش‌شده</div>
+                                <div class="fw-bold fs-5 text-primary" id="statProcessed">۰</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-sm-3">
+                            <div class="p-2 border rounded bg-light">
+                                <div class="text-muted small">شناسه‌های جدید</div>
+                                <div class="fw-bold fs-5 text-success" id="statInserted">۰</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-sm-3">
+                            <div class="p-2 border rounded bg-light">
+                                <div class="text-muted small">بروزرسانی‌شده</div>
+                                <div class="fw-bold fs-5 text-info" id="statUpdated">۰</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-sm-3">
+                            <div class="p-2 border rounded bg-light">
+                                <div class="text-muted small">منقضی‌شده (ردشده)</div>
+                                <div class="fw-bold fs-5 text-warning" id="statExpired">۰</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- باکس پیام خطای احتمالی -->
+                    <div class="alert alert-danger d-none mt-3" id="progressErrorBox" role="alert">
+                        <i class="fas fa-times-circle me-2"></i>
+                        <span id="progressErrorText"></span>
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-outline-danger btn-sm" id="retryBtn">
+                                <i class="fas fa-redo me-1"></i> تلاش مجدد
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- باکس پیام موفقیت نهایی -->
+                    <div class="alert alert-success d-none mt-3" id="progressSuccessBox" role="alert">
+                        <h6 class="alert-heading fw-bold mb-1">
+                            <i class="fas fa-check-circle me-2"></i> بارگذاری با حداکثر سرعت انجام شد!
+                        </h6>
+                        <p class="mb-3 small" id="progressSuccessText"></p>
+                        <div class="d-flex gap-2">
+                            <a asp-page="./Index" class="btn btn-success btn-sm">
+                                <i class="fas fa-list me-1"></i> مشاهده لیست شناسه‌ها
+                            </a>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" id="resetImportBtn">
+                                <i class="fas fa-upload me-1"></i> بارگذاری فایل دیگر
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <div class="col-lg-5">
             <div class="card shadow-sm border-0 mb-3 border-top border-info border-3">
                 <div class="card-header bg-light py-3">
                     <h5 class="card-title mb-0 text-info">
-                        <i class="fas fa-info-circle me-2"></i> راهنمای ستون‌های فایل اکسل
+                        <i class="fas fa-info-circle me-2"></i> راهنمای فایل اکسل سایت stuffid
                     </h5>
                 </div>
                 <div class="card-body p-3">
                     <p class="small text-muted mb-3">
-                        فایل اکسل ارسالی می‌تواند مستقیماً <strong>فایل خروجی سامانه stuffid</strong> یا قالب استاندارد سامانه باشد. ستون‌ها به صورت خودکار از روی هدرها شناسایی می‌شوند:
+                        فایل اکسل ارسالی می‌تواند مستقیماً <strong>فایل خام دانلود شده از سامانه stuffid</strong> (شامل حدود ۳ میلیون سطر) یا فایل قالب اختصاصی باشد:
                     </p>
                     <ul class="list-group list-group-flush small">
                         <li class="list-group-item px-0">
-                            <strong>شناسه (ID / Code):</strong> کد ۱۳ رقمی یا نماد علمی (مانند <code>2.90395E+12</code> یا <code>2720000123456</code>)
+                            <strong>شناسه (ID / Code):</strong> کد ۱۳ رقمی یا نماد علمی اعشاری (مانند <code>2.90395E+12</code> یا <code>2720000123456</code>) به طور خودکار اصلاح و نرمال‌سازی می‌شود.
                         </li>
                         <li class="list-group-item px-0">
                             <strong>شرح (DescriptionOfID / Title):</strong> عنوان رسمی کالا یا خدمت
@@ -89,8 +187,8 @@
                         <li class="list-group-item px-0">
                             <strong>نرخ ارزش افزوده (Vat / VatRate):</strong> درصد مالیات بر ارزش افزوده (مانند <code>10</code> یا <code>9</code>)
                         </li>
-                        <li class="list-group-item px-0">
-                            <strong>تاریخ انقضا (ExpirationDate):</strong> تاریخ انقضای شمسی کالا. <em>اقلامی که تاریخ انقضای آن‌ها گذشته باشد بارگذاری نخواهند شد.</em>
+                        <li class="list-group-item px-0 text-danger">
+                            <strong>فیلتر خودکار انقضا:</strong> مواردی که تاریخ انقضای آن‌ها (شمسی یا میلادی) از تاریخ امروز کمتر باشد، طبق دستور به طور خودکار فیلتر شده و بارگذاری نمی‌شوند.
                         </li>
                         <li class="list-group-item px-0">
                             <strong>نوع شناسه (Type):</strong> تولید داخل یا وارداتی، اختصاصی یا عمومی
@@ -107,10 +205,265 @@
                     </div>
                 </div>
             </div>
+
+            <div class="card shadow-sm border-0 bg-primary-subtle text-primary border-primary-subtle">
+                <div class="card-body p-3 small">
+                    <h6 class="fw-bold mb-2"><i class="fas fa-bolt me-1"></i> عملکرد فوق‌سریع موتور پردازش:</h6>
+                    <ul class="mb-0 ps-3">
+                        <li>خوانش استریم فایل XML به جای نگهداری DOM در رم (جلوگیری ۱۰۰٪ از سرریز حافظه).</li>
+                        <li>درج دسته‌ای ۵۰,۰۰۰ تایی با پروتکل پرسرعت TDS از طریق SqlBulkCopy.</li>
+                        <li>ادغام ست‌بیس در SQL Server و حفظ یکپارچگی کلیه داده‌ها.</li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
 @section Scripts {
     <partial name="_ValidationScriptsPartial" />
+    <script>
+        (function () {
+            const form = document.getElementById('importForm');
+            const fileInput = document.getElementById('excelFileInput');
+            const submitBtn = document.getElementById('submitImportBtn');
+            const uploadFormCard = document.getElementById('uploadFormCard');
+            const progressCard = document.getElementById('progressCard');
+            const progressBar = document.getElementById('importProgressBar');
+            const percentBadge = document.getElementById('percentBadge');
+            const statusMessage = document.getElementById('statusMessage');
+            const stageBadge = document.getElementById('stageBadge');
+            const transferredSize = document.getElementById('transferredSize');
+            const progressSpinner = document.getElementById('progressSpinner');
+            const progressErrorBox = document.getElementById('progressErrorBox');
+            const progressErrorText = document.getElementById('progressErrorText');
+            const progressSuccessBox = document.getElementById('progressSuccessBox');
+            const progressSuccessText = document.getElementById('progressSuccessText');
+            const retryBtn = document.getElementById('retryBtn');
+            const resetImportBtn = document.getElementById('resetImportBtn');
+
+            const statProcessed = document.getElementById('statProcessed');
+            const statInserted = document.getElementById('statInserted');
+            const statUpdated = document.getElementById('statUpdated');
+            const statExpired = document.getElementById('statExpired');
+
+            let pollInterval = null;
+
+            if (form) {
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
+
+                    const files = fileInput.files;
+                    if (!files || files.length === 0) {
+                        alert('لطفاً یک فایل اکسل انتخاب نمایید.');
+                        return;
+                    }
+
+                    const file = files[0];
+                    if (!file.name.toLowerCase().endsWith('.xlsx')) {
+                        alert('فرمت فایل انتخابی باید اکسل (.xlsx) باشد.');
+                        return;
+                    }
+
+                    startUploadAndProcessing(file);
+                });
+            }
+
+            function startUploadAndProcessing(file) {
+                const taskId = 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                document.getElementById('hiddenTaskId').value = taskId;
+
+                // نمایش کارت پیشرفت و پنهان کردن فرم
+                uploadFormCard.classList.add('d-none');
+                progressCard.classList.remove('d-none');
+                progressErrorBox.classList.add('d-none');
+                progressSuccessBox.classList.add('d-none');
+
+                progressBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-primary fw-bold fs-6';
+                progressBar.style.width = '0%';
+                progressBar.textContent = '۰٪';
+                percentBadge.textContent = '۰٪';
+                stageBadge.className = 'badge bg-info text-dark';
+                stageBadge.textContent = 'مرحله ۱ از ۲: ارسال فایل به سرور';
+                statusMessage.textContent = 'در حال ارسال فایل اکسل به سرور...';
+                transferredSize.textContent = `حجم فایل: ${(file.size / (1024 * 1024)).toFixed(1)} مگابایت`;
+
+                const formData = new FormData(form);
+
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', window.location.pathname + window.location.search, true);
+                xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+
+                // رهگیری درصد آپلود بایت‌ها
+                xhr.upload.onprogress = function (e) {
+                    if (e.lengthComputable) {
+                        const percent = Math.round((e.loaded / e.total) * 100);
+                        const loadedMb = (e.loaded / (1024 * 1024)).toFixed(1);
+                        const totalMb = (e.total / (1024 * 1024)).toFixed(1);
+
+                        // فاز آپلود را حداکثر تا ۵۰ درصد کل نمایش می‌دهیم
+                        const displayPercent = Math.min(50, Math.round(percent / 2));
+                        progressBar.style.width = displayPercent + '%';
+                        progressBar.textContent = percent + '% (آپلود)';
+                        percentBadge.textContent = percent + '%';
+                        transferredSize.textContent = `${loadedMb} مگابایت از ${totalMb} مگابایت ارسال شده است.`;
+
+                        if (percent >= 100) {
+                            stageBadge.className = 'badge bg-primary text-white';
+                            stageBadge.textContent = 'مرحله ۲ از ۲: استخراج و درج فوق‌سریع در دیتابیس';
+                            statusMessage.textContent = 'فایل به سرور رسید. در حال آغاز استخراج و ذخیره دسته‌ای...';
+                            startPollingProgress(taskId);
+                        }
+                    }
+                };
+
+                xhr.onload = function () {
+                    if (xhr.status === 200) {
+                        try {
+                            const res = JSON.parse(xhr.responseText);
+                            if (res.success) {
+                                completeSuccess(res);
+                            } else {
+                                showError(res.message || 'خطا در انجام عملیات بارگذاری.');
+                            }
+                        } catch (ex) {
+                            // در صورتی که پاسخ اچ‌تی‌ام‌ال بود
+                            checkFinalStatus(taskId);
+                        }
+                    } else {
+                        showError('خطای سرور با کد ' + xhr.status + ': ممکن است حجم فایل بیش از حد مجاز باشد یا اتصال قطع شده باشد.');
+                    }
+                };
+
+                xhr.onerror = function () {
+                    showError('خطا در برقراری ارتباط با سرور.');
+                };
+
+                xhr.send(formData);
+            }
+
+            function startPollingProgress(taskId) {
+                if (pollInterval) clearInterval(pollInterval);
+
+                pollInterval = setInterval(async function () {
+                    try {
+                        const resp = await fetch(`?handler=Progress&taskId=${encodeURIComponent(taskId)}`, {
+                            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                        });
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            updateProgressUI(data);
+
+                            if (data.isCompleted) {
+                                clearInterval(pollInterval);
+                                pollInterval = null;
+                                if (data.stage === 'error') {
+                                    showError(data.errorMessage || 'خطا در پردازش فایل');
+                                } else {
+                                    completeSuccess({
+                                        insertedCount: data.insertedCount,
+                                        updatedCount: data.updatedCount,
+                                        expiredSkippedCount: data.expiredSkippedCount,
+                                        skippedCount: data.skippedCount,
+                                        message: data.resultMessage || 'عملیات با موفقیت به پایان رسید.'
+                                    });
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Polling error:', e);
+                    }
+                }, 400);
+            }
+
+            function updateProgressUI(data) {
+                if (!data || data.stage === 'none') return;
+
+                if (data.stageTitle) {
+                    statusMessage.textContent = data.stageTitle;
+                }
+
+                if (typeof data.percent === 'number' && data.percent > 0) {
+                    progressBar.style.width = data.percent + '%';
+                    progressBar.textContent = data.percent + '٪';
+                    percentBadge.textContent = data.percent + '٪';
+                }
+
+                if (data.processedRows > 0) {
+                    statProcessed.textContent = Number(data.processedRows).toLocaleString('fa-IR');
+                }
+                if (data.insertedCount > 0) {
+                    statInserted.textContent = Number(data.insertedCount).toLocaleString('fa-IR');
+                }
+                if (data.updatedCount > 0) {
+                    statUpdated.textContent = Number(data.updatedCount).toLocaleString('fa-IR');
+                }
+                if (data.expiredSkippedCount > 0) {
+                    statExpired.textContent = Number(data.expiredSkippedCount).toLocaleString('fa-IR');
+                }
+            }
+
+            function completeSuccess(res) {
+                if (pollInterval) {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                }
+
+                progressBar.className = 'progress-bar bg-success fw-bold fs-6';
+                progressBar.style.width = '100%';
+                progressBar.textContent = '۱۰۰٪ تکمیل شد';
+                percentBadge.className = 'badge bg-success fs-6';
+                percentBadge.textContent = '۱۰۰٪';
+                stageBadge.className = 'badge bg-success text-white';
+                stageBadge.textContent = 'تکمیل شد';
+                statusMessage.textContent = 'بارگذاری و درج شناسه‌ها در پایگاه داده با موفقیت پایان یافت.';
+                progressSpinner.className = 'fas fa-check-circle text-success me-2';
+
+                if (res.insertedCount !== undefined) {
+                    statInserted.textContent = Number(res.insertedCount).toLocaleString('fa-IR');
+                }
+                if (res.updatedCount !== undefined) {
+                    statUpdated.textContent = Number(res.updatedCount).toLocaleString('fa-IR');
+                }
+                if (res.expiredSkippedCount !== undefined) {
+                    statExpired.textContent = Number(res.expiredSkippedCount).toLocaleString('fa-IR');
+                }
+
+                progressSuccessText.textContent = res.message || 'عملیات بارگذاری با موفقیت انجام شد.';
+                progressSuccessBox.classList.remove('d-none');
+            }
+
+            function showError(msg) {
+                if (pollInterval) {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                }
+
+                progressBar.className = 'progress-bar bg-danger fw-bold fs-6';
+                progressBar.textContent = 'خطا در بارگذاری';
+                percentBadge.className = 'badge bg-danger fs-6';
+                stageBadge.className = 'badge bg-danger text-white';
+                stageBadge.textContent = 'متوقف شد';
+                progressSpinner.className = 'fas fa-exclamation-triangle text-danger me-2';
+
+                progressErrorText.textContent = msg;
+                progressErrorBox.classList.remove('d-none');
+            }
+
+            if (retryBtn) {
+                retryBtn.addEventListener('click', function () {
+                    progressCard.classList.add('d-none');
+                    uploadFormCard.classList.remove('d-none');
+                });
+            }
+
+            if (resetImportBtn) {
+                resetImportBtn.addEventListener('click', function () {
+                    fileInput.value = '';
+                    progressCard.classList.add('d-none');
+                    uploadFormCard.classList.remove('d-none');
+                });
+            }
+        })();
+    </script>
 }

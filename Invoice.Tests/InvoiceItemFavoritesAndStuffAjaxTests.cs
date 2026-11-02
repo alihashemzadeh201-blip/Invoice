@@ -41,6 +41,15 @@ namespace Invoice.Tests
             _context = new DataContext(options);
             _context.Database.EnsureCreated();
 
+            // در دیتابیس اصلی SQL Server، جدول UserFavoriteStuffs بدون کلید خارجی روی StuffCode است تا کالاهای اختصاصی مشتری
+            // (که در جدول ۳ میلیونی Stuffs نیستند) بتوانند در منتخب‌ها ذخیره شوند. در SQLite برای شبیه‌سازی دقیق همین رفتار
+            // بررسی کلید خارجی را غیرفعال می‌کنیم.
+            using (var cmd = _connection.CreateCommand())
+            {
+                cmd.CommandText = "PRAGMA foreign_keys = OFF;";
+                cmd.ExecuteNonQuery();
+            }
+
             _activityLoggerMock = new Mock<IUserActivityLogger>();
             _indexLoggerMock = new Mock<ILogger<StuffIndexModel>>();
         }
@@ -402,9 +411,137 @@ namespace Invoice.Tests
             Assert.Equal(1, root.GetArrayLength());
             var item = root[0];
             Assert.Equal(stuff.Code, item.GetProperty("sstid").GetString());
-            Assert.Equal("خدمات نصب و راه‌اندازی", item.GetProperty("sstt").GetString());
+            Assert.Equal("خدمات تخصصی نصب", item.GetProperty("sstt").GetString());
             Assert.Equal(15000000m, item.GetProperty("fee").GetDecimal());
             Assert.Equal("168", item.GetProperty("mu").GetString());
+        }
+
+        [Fact]
+        public async Task StuffIndex_OnGet_WhenFavoritesEmpty_KeepsFavTab_AndShowsEmptyWithoutSwitchingToAll()
+        {
+            // Arrange
+            var user = "empty_fav_user";
+            _context.Users.Add(new User { Username = user });
+
+            // وجود کالای عمومی در جدول کاتالوگ سازمان (۳ میلیون کالا)
+            var publicStuff = new Stuff { Code = "2720000999001", Title = "کالای عمومی مالیات", VatRate = 10, VatTax = true };
+            await _context.Stuffs.AddAsync(publicStuff);
+            await _context.SaveChangesAsync();
+
+            var pageModel = new StuffIndexModel(_context, _activityLoggerMock.Object, _indexLoggerMock.Object)
+            {
+                PageContext = CreatePageContext(user)
+            };
+
+            // Act: ورود به صفحه با تب پیش‌فرض
+            await pageModel.OnGetAsync();
+
+            // Assert: تب باید حتماً روی "fav" بماند و به "all" سوییچ نشود
+            Assert.Equal("fav", pageModel.Tab);
+            Assert.Equal(0, pageModel.FavoritesCount);
+            Assert.Equal(0, pageModel.TotalCount);
+            Assert.Empty(pageModel.Items);
+        }
+
+        [Fact]
+        public async Task StuffIndex_OnGet_ShowsExistingCustomerProducts_EvenIfMissingFromStuffsCatalog()
+        {
+            // Arrange
+            var user = "custom_prod_user";
+            _context.Users.Add(new User { Username = user });
+
+            var mu = new MeasureUnit { Code = "162", Title = "کیلوگرم" };
+            await _context.MeasureUnits.AddAsync(mu);
+
+            // کالای اختصاصی مشتری در جدول Products که در جدول عمومی Stuffs وجود ندارد
+            var customCode = "CUSTOM99988877";
+            var prod = new Product
+            {
+                Creator = user,
+                Sstid = customCode,
+                Sstt = "کالای دست‌ساز اختصاصی مشتری",
+                Fee = 450000m,
+                Mu = "162"
+            };
+            await _context.Products.AddAsync(prod);
+            await _context.UserFavoriteStuffs.AddAsync(new UserFavoriteStuff
+            {
+                Username = user,
+                StuffCode = customCode,
+                AddedDate = DateTime.Now
+            });
+            await _context.SaveChangesAsync();
+
+            var pageModel = new StuffIndexModel(_context, _activityLoggerMock.Object, _indexLoggerMock.Object)
+            {
+                PageContext = CreatePageContext(user)
+            };
+
+            // Act
+            await pageModel.OnGetAsync();
+
+            // Assert: کالای اختصاصی باید در تب کالاهای منتخب ظاهر شود حتی بدون رکورد در Stuffs
+            Assert.Equal(1, pageModel.FavoritesCount);
+            Assert.Single(pageModel.Items);
+            var item = pageModel.Items[0];
+            Assert.Equal(customCode, item.Code);
+            Assert.Equal("کالای دست‌ساز اختصاصی مشتری", item.Title);
+            Assert.Equal(450000m, item.Fee);
+            Assert.Equal("162", item.Mu);
+        }
+
+        [Fact]
+        public async Task ProductCreate_OnPost_DoesNotAddToPublicStuffsTable_AndIsIsolatedToCurrentUser()
+        {
+            // Arrange
+            var user1 = "mouddi_owner";
+            var user2 = "mouddi_other";
+            _context.Users.Add(new User { Username = user1 });
+            _context.Users.Add(new User { Username = user2 });
+
+            var mu = new MeasureUnit { Code = "162", Title = "کیلوگرم" };
+            await _context.MeasureUnits.AddAsync(mu);
+            await _context.SaveChangesAsync();
+
+            var createModel = new Invoice.Pages_Product.CreateModel(_context)
+            {
+                PageContext = CreatePageContext(user1),
+                Product = new Product
+                {
+                    Sstid = "NEW_CUSTOM_123",
+                    Sstt = "محصول تعریف شده توسط مودی ۱",
+                    Fee = 780000m,
+                    Mu = "162"
+                }
+            };
+
+            // Act: ثبت محصول جدید
+            var result = await createModel.OnPostAsync();
+
+            // Assert 1: هدایت به تب کالاهای منتخب
+            var redirectResult = Assert.IsType<RedirectToPageResult>(result);
+            Assert.Equal("/Stuff/Index", redirectResult.PageName);
+            Assert.Equal("fav", redirectResult.RouteValues?["Tab"]);
+
+            // Assert 2: کالا نباید در جدول عمومی Stuffs ثبت شود
+            var inPublicStuffs = await _context.Stuffs.AnyAsync(s => s.Code == "NEW_CUSTOM_123");
+            Assert.False(inPublicStuffs, "کالای اختصاصی کاربر نباید در جدول کاتالوگ عمومی Stuffs درج گردد");
+
+            // Assert 3: کالا باید در Products با مالکیت کاربر ۱ و منتخب‌های او وجود داشته باشد
+            var inProducts = await _context.Products.FirstOrDefaultAsync(p => p.Sstid == "NEW_CUSTOM_123");
+            Assert.NotNull(inProducts);
+            Assert.Equal(user1, inProducts.Creator);
+
+            var inFavorites = await _context.UserFavoriteStuffs.FirstOrDefaultAsync(f => f.StuffCode == "NEW_CUSTOM_123" && f.Username == user1);
+            Assert.NotNull(inFavorites);
+
+            // Assert 4: کاربر دوم در صفحه کالاهای منتخب خود این کالا را نمی‌بیند
+            var otherPageModel = new StuffIndexModel(_context, _activityLoggerMock.Object, _indexLoggerMock.Object)
+            {
+                PageContext = CreatePageContext(user2)
+            };
+            await otherPageModel.OnGetAsync();
+            Assert.DoesNotContain(otherPageModel.Items, s => s.Code == "NEW_CUSTOM_123");
         }
     }
 }

@@ -13,56 +13,68 @@ public class ExcelHelp
 {
     public static ExcelDoc Open(string path)
     {
-        ExcelDoc doc = new ExcelDoc();
-
-
         using (SpreadsheetDocument spreadsheetDocument = SpreadsheetDocument.Open(path, false))
         {
-            WorkbookPart workbookPart = spreadsheetDocument.WorkbookPart;
-            IEnumerable<Sheet> sheets = workbookPart.Workbook.GetFirstChild<Sheets>().Elements<Sheet>();
-            string relationshipId = sheets.First().Id.Value;
-            WorksheetPart worksheetPart = (WorksheetPart)workbookPart.GetPartById(relationshipId);
-            Worksheet worksheet = worksheetPart.Worksheet;
-            SheetData sheetData = worksheet.GetFirstChild<SheetData>();
-            var firstRow = true;
-            foreach (Row row in sheetData.Elements<Row>())
+            return ParseSpreadsheetDocument(spreadsheetDocument);
+        }
+    }
+
+    public static ExcelDoc Open(Stream stream)
+    {
+        using (SpreadsheetDocument spreadsheetDocument = SpreadsheetDocument.Open(stream, false))
+        {
+            return ParseSpreadsheetDocument(spreadsheetDocument);
+        }
+    }
+
+    private static ExcelDoc ParseSpreadsheetDocument(SpreadsheetDocument spreadsheetDocument)
+    {
+        ExcelDoc doc = new ExcelDoc();
+
+        WorkbookPart workbookPart = spreadsheetDocument.WorkbookPart;
+        IEnumerable<Sheet> sheets = workbookPart.Workbook.GetFirstChild<Sheets>().Elements<Sheet>();
+        string relationshipId = sheets.First().Id.Value;
+        WorksheetPart worksheetPart = (WorksheetPart)workbookPart.GetPartById(relationshipId);
+        Worksheet worksheet = worksheetPart.Worksheet;
+        SheetData sheetData = worksheet.GetFirstChild<SheetData>();
+        var firstRow = true;
+        foreach (Row row in sheetData.Elements<Row>())
+        {
+            ExcelRow tempRow = new ExcelRow();
+            int currentColIndex = 0;
+            foreach (Cell cell in row.Elements<Cell>())
             {
-                ExcelRow tempRow = new ExcelRow();
-                int currentColIndex = 0;
-                foreach (Cell cell in row.Elements<Cell>())
+                int cellColIndex = GetColumnIndex(cell.CellReference?.Value);
+                if (cellColIndex >= 0)
                 {
-                    int cellColIndex = GetColumnIndex(cell.CellReference?.Value);
-                    if (cellColIndex >= 0)
+                    // پر کردن سلول‌های خالی جا افتاده قبل از سلول فعلی
+                    while (currentColIndex < cellColIndex)
                     {
-                        // پر کردن سلول‌های خالی جا افتاده قبل از سلول فعلی
-                        while (currentColIndex < cellColIndex)
-                        {
-                            tempRow.Cells.Add(string.Empty);
-                            currentColIndex++;
-                        }
-                        tempRow.Cells.Add(GetCellValue(cell, workbookPart));
-                        currentColIndex = cellColIndex + 1;
-                    }
-                    else
-                    {
-                        tempRow.Cells.Add(GetCellValue(cell, workbookPart));
+                        tempRow.Cells.Add(string.Empty);
                         currentColIndex++;
                     }
-                }
-                if (firstRow)
-                {
-                    firstRow = false;
-                    doc.ColumnHeaders.AddRange(tempRow.Cells);
+                    tempRow.Cells.Add(GetCellValue(cell, workbookPart));
+                    currentColIndex = cellColIndex + 1;
                 }
                 else
                 {
-                    // تکمیل تعداد سلول‌های ردیف تا انتهای ستون‌ها در صورت خالی بودن سلول‌های پایانی
-                    while (doc.ColumnHeaders != null && tempRow.Cells.Count < doc.ColumnHeaders.Count)
-                    {
-                        tempRow.Cells.Add(string.Empty);
-                    }
-                    doc.Rows.Add(tempRow);
+                    tempRow.Cells.Add(GetCellValue(cell, workbookPart));
+                    currentColIndex++;
                 }
+            }
+            if (firstRow)
+            {
+                firstRow = false;
+                doc.ColumnHeaders.AddRange(tempRow.Cells);
+            }
+            else
+            {
+                // تکمیل تعداد سلول‌های ردیف تا انتهای ستون‌ها در صورت خالی بودن سلول‌های پایانی
+                while (doc.ColumnHeaders != null && tempRow.Cells.Count < doc.ColumnHeaders.Count)
+                {
+                    tempRow.Cells.Add(string.Empty);
+                }
+                doc.Rows.Add(tempRow);
             }
         }
 

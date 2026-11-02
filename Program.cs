@@ -40,11 +40,24 @@ builder.Services.AddDbContext<DataContext>(options =>
 builder.Services.AddScoped<ISelectedProfile, SelectedProfile>();
 builder.Services.AddScoped<IImportTemplateService, ImportTemplateService>();
 builder.Services.AddScoped<IInvoiceService, InvoiceService>();
+builder.Services.AddScoped<IInvoiceSenderService, InvoiceSenderService>();
 builder.Services.AddScoped<IScopedFields, ScopedFields>();
 builder.Services.AddScoped<ICustomerFinanceService, CustomerFinanceService>();
 builder.Services.AddScoped<IDatabaseBackupService, DatabaseBackupService>();
 builder.Services.AddScoped<IUserActivityLogger, UserActivityLogger>();
 builder.Services.AddHttpContextAccessor();
+
+// تنظیم حداکثر حجم بارگذاری فایل برای فایل‌های حجیم اکسل (تا ۵۰۰ مگابایت)
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 500 * 1024 * 1024; // 500 MB
+    options.ValueLengthLimit = int.MaxValue;
+    options.MultipartHeadersLengthLimit = int.MaxValue;
+});
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 500 * 1024 * 1024; // 500 MB
+});
 
 // خدمات اتصال و اطلاع‌رسانی پیام‌رسان بله
 builder.Services.AddHttpClient("BaleClient", client =>
@@ -143,10 +156,12 @@ BEGIN
         [ChatId] NVARCHAR(100) NOT NULL PRIMARY KEY,
         [Username] NVARCHAR(100) NULL,
         [CurrentStep] NVARCHAR(100) NOT NULL,
+        [ActiveProfileId] INT NULL,
         [StateDataJson] NVARCHAR(MAX) NULL,
         [LastUpdated] DATETIME2 NOT NULL
     );
 END
+IF COL_LENGTH('BaleUserStates', 'ActiveProfileId') IS NULL ALTER TABLE BaleUserStates ADD ActiveProfileId INT NULL;
 IF COL_LENGTH('Users', 'BaleChatId') IS NULL ALTER TABLE Users ADD BaleChatId NVARCHAR(100) NULL;
 IF COL_LENGTH('Users', 'BaleUsername') IS NULL ALTER TABLE Users ADD BaleUsername NVARCHAR(100) NULL;
 IF COL_LENGTH('KarpooshehRequests', 'PostalCode') IS NULL ALTER TABLE KarpooshehRequests ADD PostalCode NVARCHAR(50) NULL;

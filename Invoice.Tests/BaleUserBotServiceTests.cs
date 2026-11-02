@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Invoice.Code;
 using Invoice.Models;
 using Invoices.Models;
+using TaxCollectData;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -780,7 +781,13 @@ namespace Invoice.Tests
 
             var updatedUser = await _context.Users.FindAsync("reseller_user");
             Assert.NotNull(updatedUser);
-            Assert.Equal(prof2.Id, updatedUser.ProfileId);
+            // اطمینان از عدم دستکاری ProfileId اصلی کاربر و حفظ پروفایل اصلی فروشنده
+            Assert.Equal(prof1.Id, updatedUser.ProfileId);
+
+            // اطمینان از ذخیره پروفایل فعال انتخابی در وضعیت جلسه ربات
+            var state = await _context.BaleUserStates.FindAsync(resellerChatId);
+            Assert.NotNull(state);
+            Assert.Equal(prof2.Id, state.ActiveProfileId);
 
             var allTexts = GetAllMessageTexts();
             Assert.Contains(allTexts, m => m.Contains("پروفایل فعال با موفقیت تغییر یافت"));
@@ -923,6 +930,336 @@ namespace Invoice.Tests
 
             var existsAfter = await _context.UserFavoriteStuffs.AnyAsync(f => f.Username == "fav_user_1" && f.StuffCode == stuff.Code);
             Assert.False(existsAfter);
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_InvCreateWizard_StartsStepAndShowsBuyerType()
+        {
+            var chatId = "33445566";
+            var profile = new Profile { FirstName = "شرکت تست مودیان", TinCode = "14001234567", MemoryId = "MEM01" };
+            _context.Profiles.Add(profile);
+            await _context.SaveChangesAsync();
+
+            var user = new User
+            {
+                Username = "wiz_user",
+                Role = "user",
+                BaleChatId = chatId,
+                ProfileId = profile.Id
+            };
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            var update = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_wiz_start"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""wiz_user"" }},
+                    ""message"": {{ ""message_id"": 110, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_create_wizard""
+                }}
+            }}");
+
+            await _service.ProcessUpdateAsync(update);
+
+            var state = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(state);
+            Assert.Equal("InvWiz_BuyerType", state.CurrentStep);
+
+            var lastMsg = GetLastMessageText();
+            Assert.NotNull(lastMsg);
+            Assert.Contains("مرحله ۱ از ۵", lastMsg);
+            Assert.Contains("نوع خریدار", lastMsg);
+            Assert.Contains("inv_wiz_bt:consumer", _httpHandler.RequestBodies[^1]);
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_InvWizard_BuyerTypeConsumer_TransitionsToItemSelect()
+        {
+            var chatId = "44556677";
+            var profile = new Profile { FirstName = "فروشگاه نمونه", TinCode = "14009988776", MemoryId = "MEM02" };
+            _context.Profiles.Add(profile);
+            await _context.SaveChangesAsync();
+
+            var user = new User
+            {
+                Username = "wiz_consumer_user",
+                Role = "user",
+                BaleChatId = chatId,
+                ProfileId = profile.Id
+            };
+            _context.Users.Add(user);
+
+            var state = new BaleUserState
+            {
+                ChatId = chatId,
+                CurrentStep = "InvWiz_BuyerType",
+                Username = user.Username,
+                LastUpdated = DateTime.Now
+            };
+            _context.BaleUserStates.Add(state);
+            await _context.SaveChangesAsync();
+
+            var update = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_wiz_consumer"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""wiz_consumer_user"" }},
+                    ""message"": {{ ""message_id"": 111, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_wiz_bt:consumer""
+                }}
+            }}");
+
+            await _service.ProcessUpdateAsync(update);
+
+            var updatedState = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(updatedState);
+            Assert.Equal("InvWiz_ItemSelect", updatedState.CurrentStep);
+
+            var lastMsg = GetLastMessageText();
+            Assert.NotNull(lastMsg);
+            Assert.Contains("مرحله ۳ از ۵: انتخاب کالا یا خدمت", lastMsg);
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_InvCancelRecent_ShowsConfirmationCard()
+        {
+            var chatId = "55667788";
+            var profile = new Profile { FirstName = "پروفایل ابطال", TinCode = "10101010101" };
+            _context.Profiles.Add(profile);
+            await _context.SaveChangesAsync();
+
+            var user = new User { Username = "cancel_user", Role = "user", BaleChatId = chatId, ProfileId = profile.Id };
+            _context.Users.Add(user);
+
+            var invoice = new Invoices.Models.Invoice
+            {
+                Sender = user.Username,
+                ProfileId = profile.Id,
+                Tins = profile.TinCode,
+                Taxid = "A111BB222CC333DD444EE5",
+                InvoiceDate = "1403/08/10",
+                Status = InvoiceStatus.موفق,
+                Ins = InvoiceTopic.اصلی
+            };
+            _context.Invoices.Add(invoice);
+            await _context.SaveChangesAsync();
+
+            var update = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_cancel_recent"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""cancel_user"" }},
+                    ""message"": {{ ""message_id"": 112, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_cancel:{invoice.Id}""
+                }}
+            }}");
+
+            await _service.ProcessUpdateAsync(update);
+
+            var lastMsg = GetLastMessageText();
+            Assert.NotNull(lastMsg);
+            Assert.Contains("تایید نهایی ابطال صورتحساب", lastMsg);
+            Assert.Contains(invoice.Taxid, lastMsg);
+            Assert.Contains("رایگان", lastMsg);
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_InvCancelConfirm_CancelsInvoiceSuccessfullyWithoutFee()
+        {
+            var chatId = "66778899";
+            var profile = new Profile { FirstName = "پروفایل تایید ابطال", TinCode = "10102020202" };
+            _context.Profiles.Add(profile);
+            await _context.SaveChangesAsync();
+
+            var initialWallet = 250000;
+            var user = new User
+            {
+                Username = "confirm_cancel_user",
+                Role = "user",
+                BaleChatId = chatId,
+                ProfileId = profile.Id,
+                Vallet = initialWallet
+            };
+            _context.Users.Add(user);
+
+            var origInvoice = new Invoices.Models.Invoice
+            {
+                Sender = user.Username,
+                ProfileId = profile.Id,
+                Tins = profile.TinCode,
+                Taxid = "TAXIDREF99887766554433",
+                InvoiceDate = "1403/08/12",
+                Status = InvoiceStatus.موفق,
+                Ins = InvoiceTopic.اصلی
+            };
+            _context.Invoices.Add(origInvoice);
+            await _context.SaveChangesAsync();
+
+            var senderMock = new Mock<IInvoiceSenderService>();
+            senderMock.Setup(s => s.SendInvoice(It.IsAny<Invoices.Models.Invoice>()))
+                .Returns(new InvoiceApiHelperResponse("CANCELTAXID1122334455", InvoiceStatus.موفق, "CANCELREF999", "UID999", "OK"));
+
+            var botService = new BaleUserBotService(
+                _context,
+                _settingsServiceMock.Object,
+                _adminNotificationServiceMock.Object,
+                _httpClientFactoryMock.Object,
+                _activityLoggerMock.Object,
+                _loggerMock.Object,
+                invoiceSender: senderMock.Object);
+
+            var update = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_confirm_cancel_exec"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""confirm_cancel_user"" }},
+                    ""message"": {{ ""message_id"": 113, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_cancel_confirm:{origInvoice.Id}""
+                }}
+            }}");
+
+            await botService.ProcessUpdateAsync(update);
+
+            // بررسی وضعیت فاکتور اولیه
+            var refreshedOrig = await _context.Invoices.FindAsync(origInvoice.Id);
+            Assert.NotNull(refreshedOrig);
+            Assert.Equal(InvoiceStatus.ابطال_شده, refreshedOrig.Status);
+            Assert.NotNull(refreshedOrig.ReferalId);
+
+            // بررسی ایجاد فاکتور ابطالی
+            var cancelInv = await _context.Invoices.FindAsync(refreshedOrig.ReferalId.Value);
+            Assert.NotNull(cancelInv);
+            Assert.Equal(InvoiceTopic.ابطالی, cancelInv.Ins);
+            Assert.Equal(origInvoice.Taxid, cancelInv.Irtaxid);
+            Assert.Equal("CANCELTAXID1122334455", cancelInv.Taxid);
+
+            // تایید رایگان بودن و عدم کسر ریالی از کیف پول
+            var refreshedUser = await _context.Users.FindAsync(user.Username);
+            Assert.NotNull(refreshedUser);
+            Assert.Equal(initialWallet, refreshedUser.Vallet);
+
+            var allMsgs = GetAllMessageTexts();
+            Assert.Contains(allMsgs, m => m.Contains("صورتحساب ابطالی با موفقیت در سامانه مودیان ثبت گردید"));
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_InvExcelCancel_RemovesUserDraftInvoices()
+        {
+            var chatId = "77889900";
+            var user = new User { Username = "draft_user", Role = "user", BaleChatId = chatId };
+            _context.Users.Add(user);
+
+            var draft1 = new Invoices.Models.Invoice { Sender = user.Username, Tins = "14001234567", Ins = InvoiceTopic.اصلی, Draft = true, Status = InvoiceStatus.در_انتظار_ارسال };
+            var draft2 = new Invoices.Models.Invoice { Sender = user.Username, Tins = "14001234567", Ins = InvoiceTopic.اصلی, Draft = true, Status = InvoiceStatus.در_انتظار_ارسال };
+            var realInv = new Invoices.Models.Invoice { Sender = user.Username, Tins = "14001234567", Ins = InvoiceTopic.اصلی, Draft = false, Status = InvoiceStatus.موفق };
+
+            await _context.Invoices.AddRangeAsync(draft1, draft2, realInv);
+            await _context.SaveChangesAsync();
+
+            var update = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_excel_cancel"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""draft_user"" }},
+                    ""message"": {{ ""message_id"": 114, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_excel_cancel""
+                }}
+            }}");
+
+            await _service.ProcessUpdateAsync(update);
+
+            var remainingDrafts = await _context.Invoices.Where(i => i.Draft && i.Sender == user.Username).ToListAsync();
+            Assert.Empty(remainingDrafts);
+
+            var realInvStillExists = await _context.Invoices.AnyAsync(i => i.Id == realInv.Id);
+            Assert.True(realInvStillExists);
+
+            var allMsgs = GetAllMessageTexts();
+            Assert.Contains(allMsgs, m => m.Contains("لغو و پاکسازی شدند"));
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_ResellerInvoiceWizard_UsesActiveProfileFromState()
+        {
+            var resellerChatId = "55443322";
+            var user = new User
+            {
+                Username = "reseller_sender",
+                Role = "reseller",
+                BaleChatId = resellerChatId,
+                Vallet = 500000
+            };
+            _context.Users.Add(user);
+
+            var mu = new MeasureUnit { Code = "162", Title = "کیلوگرم" };
+            _context.MeasureUnits.Add(mu);
+            await _context.SaveChangesAsync();
+
+            var prof1 = new Profile { FirstName = "پروفایل اصلی نماینده", Lastname = "شعبه مرکزی", Creator = "reseller_sender", MemoryId = "MEM01", TinCode = "10101010101" };
+            var prof2 = new Profile { FirstName = "مشتری انتخابی نماینده", Lastname = "پروژه الف", Creator = "reseller_sender", MemoryId = "MEM02", TinCode = "10202020202" };
+            await _context.Profiles.AddRangeAsync(prof1, prof2);
+            await _context.SaveChangesAsync();
+
+            user.ProfileId = prof1.Id;
+            user.Profile = prof1;
+            await _context.SaveChangesAsync();
+
+            var state = new BaleUserState
+            {
+                ChatId = resellerChatId,
+                Username = user.Username,
+                CurrentStep = "None",
+                ActiveProfileId = prof2.Id,
+                LastUpdated = DateTime.Now
+            };
+            _context.BaleUserStates.Add(state);
+            await _context.SaveChangesAsync();
+
+            Invoices.Models.Invoice? sentInvoice = null;
+            var senderMock = new Mock<IInvoiceSenderService>();
+            senderMock.Setup(s => s.SendInvoice(It.IsAny<Invoices.Models.Invoice>()))
+                .Callback<Invoices.Models.Invoice>(inv => sentInvoice = inv)
+                .Returns(new InvoiceApiHelperResponse("TAXID123456789012345678", InvoiceStatus.موفق, "REF123", "UID123", "OK"));
+
+            var botService = new BaleUserBotService(
+                _context,
+                _settingsServiceMock.Object,
+                _adminNotificationServiceMock.Object,
+                _httpClientFactoryMock.Object,
+                _activityLoggerMock.Object,
+                _loggerMock.Object,
+                invoiceSender: senderMock.Object);
+
+            // ارسال فاکتور تکی در گام تایید نهایی
+            state.CurrentStep = "InvWiz_Confirm";
+            state.StateDataJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+            {
+                ["BuyerType"] = "consumer",
+                ["ItemCode"] = "1111111111111",
+                ["ItemTitle"] = "تست کالا",
+                ["Am"] = "2",
+                ["Fee"] = "100000",
+                ["ItemVat"] = "10",
+                ["CheckoutType"] = "1"
+            });
+            await _context.SaveChangesAsync();
+
+            var cbSend = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_reseller_wiz_send"",
+                    ""from"": {{ ""id"": {resellerChatId}, ""username"": ""reseller_sender"" }},
+                    ""message"": {{ ""message_id"": 115, ""chat"": {{ ""id"": {resellerChatId} }} }},
+                    ""data"": ""inv_wiz_send""
+                }}
+            }}");
+
+            await botService.ProcessUpdateAsync(cbSend);
+
+            Assert.NotNull(sentInvoice);
+            // تایید اینکه فاکتور با مشخصات پروفایل فعال انتخابی صادر و امضا شده است
+            Assert.Equal(prof2.Id, sentInvoice.ProfileId);
+            Assert.Equal(prof2.TinCode, sentInvoice.Tins);
+
+            // تایید اینکه ProfileId اصلی خود کاربر نماینده تغییر نکرده است
+            var updatedUser = await _context.Users.FindAsync(user.Username);
+            Assert.NotNull(updatedUser);
+            Assert.Equal(prof1.Id, updatedUser.ProfileId);
         }
     }
 }

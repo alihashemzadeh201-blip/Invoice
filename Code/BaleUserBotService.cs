@@ -1,17 +1,24 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using DocumentFormat.OpenXml.Packaging;
 using Invoice.Models;
+using Invoice.Pages.Admin.Stuffs;
 using Invoices.Models;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using TaxCollectData;
 
 namespace Invoice.Code
 {
@@ -30,6 +37,8 @@ namespace Invoice.Code
     {
         Task ProcessUpdateAsync(JsonElement update, CancellationToken ct = default);
         Task<bool> SendUserMessageAsync(string chatId, string text, object? replyMarkup = null, string parseMode = "HTML", CancellationToken ct = default);
+        Task<bool> SendUserDocumentAsync(string chatId, byte[] fileBytes, string fileName, string? caption = null, object? replyMarkup = null, CancellationToken ct = default);
+        Task<byte[]?> DownloadFileAsync(string fileId, CancellationToken ct = default);
         Task<bool> NotifyUserTaxIdReadyAsync(string chatId, string name, string memoryId, string username, string? loginPassword = null, CancellationToken ct = default);
         Task<bool> SendRegistrationInvoiceAsync(string chatId, int requestId, int amount, string title, string description, CancellationToken ct = default);
         Task<bool> AnswerPreCheckoutQueryAsync(string preCheckoutQueryId, bool ok, string? errorMessage = null, CancellationToken ct = default);
@@ -48,6 +57,8 @@ namespace Invoice.Code
         private readonly IUserActivityLogger _activityLogger;
         private readonly ILogger<BaleUserBotService> _logger;
         private readonly IKarpooshehRegistrationService? _registrationService;
+        private readonly IInvoiceSenderService _invoiceSender;
+        private readonly IWebHostEnvironment? _env;
 
         public BaleUserBotService(
             DataContext context,
@@ -56,7 +67,9 @@ namespace Invoice.Code
             IHttpClientFactory httpClientFactory,
             IUserActivityLogger activityLogger,
             ILogger<BaleUserBotService> logger,
-            IKarpooshehRegistrationService? registrationService = null)
+            IKarpooshehRegistrationService? registrationService = null,
+            IInvoiceSenderService? invoiceSender = null,
+            IWebHostEnvironment? env = null)
         {
             _context = context;
             _settingsService = settingsService;
@@ -65,6 +78,8 @@ namespace Invoice.Code
             _activityLogger = activityLogger;
             _logger = logger;
             _registrationService = registrationService;
+            _invoiceSender = invoiceSender ?? new InvoiceSenderService();
+            _env = env;
         }
 
         private static string HtmlSafe(string? input)
@@ -176,6 +191,13 @@ namespace Invoice.Code
                 return;
             }
 
+            // بررسی دریافت سند / فایل (Document)
+            if (msg.TryGetProperty("document", out var docProp))
+            {
+                await HandleDocumentMessageAsync(chatId, docProp, ct);
+                return;
+            }
+
             // بررسی دریافت شماره تماس از طریق Contact
             string? contactPhone = null;
             if (msg.TryGetProperty("contact", out var contactProp) && contactProp.TryGetProperty("phone_number", out var pNumProp))
@@ -271,7 +293,7 @@ namespace Invoice.Code
             if (string.Equals(text, "📄 ارسال فاکتور جدید", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(text, "❌ ابطال فاکتور", StringComparison.OrdinalIgnoreCase))
             {
-                await HandleInvoiceMenuRequestAsync(chatId, text, ct);
+                await HandleInvoiceMenuRequestAsync(chatId, userState, text, ct);
                 return;
             }
 
@@ -294,10 +316,11 @@ namespace Invoice.Code
             await ProcessStepInputAsync(chatId, userState, text, contactPhone, fromUsername, ct);
         }
 
-        private async Task HandleInvoiceMenuRequestAsync(string chatId, string actionTitle, CancellationToken ct)
+        private async Task HandleInvoiceMenuRequestAsync(string chatId, BaleUserState userState, string actionTitle, CancellationToken ct)
         {
             var user = await _context.Users.Include(u => u.Profile).FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
-            if (user == null || user.Profile == null || string.IsNullOrWhiteSpace(user.Profile.MemoryId))
+            var effectiveProfile = await GetEffectiveProfileAsync(user, userState, ct);
+            if (user == null || effectiveProfile == null || string.IsNullOrWhiteSpace(effectiveProfile.MemoryId))
             {
                 await SendUserMessageAsync(chatId,
                     "⚠️ <b>حساب کاربری یا شناسه یکتای مالیاتی شما هنوز فعال نشده است.</b>\n\n" +
@@ -309,6 +332,10 @@ namespace Invoice.Code
 
             if (actionTitle.Contains("ارسال"))
             {
+                userState.CurrentStep = "None";
+                userState.StateDataJson = null;
+                await _context.SaveChangesAsync(ct);
+
                 await SendUserMessageAsync(chatId,
                     "📄 <b>ارسال صورتحساب الکترونیکی به سامانه مودیان</b>\n\n" +
                     "شما می‌توانید فاکتورهای خود را به دو روش ارسال کنید:\n" +
@@ -327,8 +354,18 @@ namespace Invoice.Code
             }
             else
             {
-                var recentInvoices = await _context.Invoices
-                    .Where(i => i.Sender == user.Username && i.Status == InvoiceStatus.موفق && i.Ins == InvoiceTopic.اصلی)
+                userState.CurrentStep = "Invoice_Cancel_WaitTaxId";
+                userState.StateDataJson = null;
+                await _context.SaveChangesAsync(ct);
+
+                var invQuery = _context.Invoices
+                    .Where(i => i.Sender == user.Username && i.Status == InvoiceStatus.موفق && i.Ins == InvoiceTopic.اصلی);
+                if (effectiveProfile != null)
+                {
+                    invQuery = invQuery.Where(i => i.ProfileId == effectiveProfile.Id);
+                }
+
+                var recentInvoices = await invQuery
                     .OrderByDescending(i => i.Id)
                     .Take(5)
                     .ToListAsync(ct);
@@ -336,8 +373,8 @@ namespace Invoice.Code
                 if (!recentInvoices.Any())
                 {
                     await SendUserMessageAsync(chatId,
-                        "ℹ️ در حال حاضر هیچ فاکتور ارسالی موفقی در سوابق شما جهت ابطال یافت نشد.\n\nدر صورتی که شماره مالیاتی ۲۲ رقمی فاکتور را دارید، می‌توانید آن را به صورت دستی ارسال نمایید.",
-                        GetBackToMenuInlineKeyboard(),
+                        "ℹ️ در حال حاضر هیچ فاکتور ارسالی موفقی در سوابق اخیر شما جهت ابطال یافت نشد.\n\nدر صورتی که شماره مالیاتی ۲۲ رقمی فاکتور را دارید، لطفاً آن را در چت ارسال فرمایید:",
+                        GetCancelReplyKeyboard(),
                         ct: ct);
                     return;
                 }
@@ -352,7 +389,7 @@ namespace Invoice.Code
                 buttons.Add(new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } });
 
                 await SendUserMessageAsync(chatId,
-                    "❌ <b>ابطال فاکتور مالیاتی</b>\n\nلطفاً فاکتور مورد نظر جهت ابطال را از لیست زیر انتخاب کنید یا شناسه مالیاتی ۲۲ رقمی آن را در چت ارسال نمایید:",
+                    "❌ <b>ابطال فاکتور مالیاتی</b>\n\nلطفاً فاکتور مورد نظر جهت ابطال را از لیست زیر انتخاب کنید یا شماره مالیاتی ۲۲ رقمی آن را در چت ارسال نمایید:",
                     new { inline_keyboard = buttons.ToArray() },
                     ct: ct);
             }
@@ -443,7 +480,9 @@ namespace Invoice.Code
             var user = await _context.Users.Include(u => u.Profile).FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
             if (user != null)
             {
-                var p = user.Profile;
+                var isReseller = string.Equals(user.Role, "reseller", StringComparison.OrdinalIgnoreCase);
+                var effectiveProfile = await GetEffectiveProfileAsync(user, chatId, ct);
+                var p = effectiveProfile ?? user.Profile;
                 var memoryId = !string.IsNullOrWhiteSpace(p?.MemoryId) ? $"<code>{p.MemoryId}</code>" : "در انتظار صدور";
                 var tin = p?.TinCode ?? "-";
                 var fullName = p != null ? $"{p.FirstName} {p.Lastname}".Trim() : user.Username;
@@ -451,6 +490,7 @@ namespace Invoice.Code
                 var text = $"👤 <b>مشخصات حساب کاربری و پرونده مالیاتی</b>\n\n" +
                            $"• متقاضی/مودی: <b>{HtmlSafe(fullName)}</b>\n" +
                            $"• نام کاربری: <code>{user.Username}</code>\n" +
+                           (isReseller && p != null ? $"• 🏢 <b>پروفایل فعال جاری:</b> {HtmlSafe(p.DisplayName)}\n" : "") +
                            $"• کد اقتصادی / شناسه ملی: <code>{tin}</code>\n" +
                            $"• شناسه یکتای حافظه مالیاتی: {memoryId}\n" +
                            $"• موجودی کیف پول: <b>{user.Vallet:N0} ریال</b>\n\n" +
@@ -583,10 +623,80 @@ namespace Invoice.Code
                 case "Login_Username":
                 case "Reg_PersonType":
                 case "Favorite_Search":
+                case "InvWiz_BuyerType":
+                case "Invoice_Cancel_WaitTaxId":
                     userState.CurrentStep = "None";
                     userState.StateDataJson = null;
                     await _context.SaveChangesAsync(ct);
                     await ShowMainMenuAsync(chatId, ct);
+                    return;
+
+                case "InvWiz_BuyerId":
+                    await StartInvoiceWizardAsync(chatId, userState, ct);
+                    return;
+
+                case "InvWiz_ItemSelect":
+                    if (data.TryGetValue("BuyerType", out var btSel) && btSel == "consumer")
+                    {
+                        await StartInvoiceWizardAsync(chatId, userState, ct);
+                    }
+                    else
+                    {
+                        userState.CurrentStep = "InvWiz_BuyerId";
+                        await _context.SaveChangesAsync(ct);
+                        var isLegalId = data.TryGetValue("BuyerType", out var btId) && btId == "legal";
+                        var promptBuyer = isLegalId
+                            ? "🏢 <b>مرحله ۲ از ۵: شناسه ملی شرکت / شخص حقوقی</b>\n\nلطفاً <b>شناسه ملی ۱۱ رقمی</b> خریدار حقوقی را بدون فاصله یا خط تیره وارد نمایید:"
+                            : "📝 <b>مرحله ۲ از ۵: کد ملی خریدار</b>\n\nلطفاً <b>کد ملی ۱۰ رقمی</b> خریدار حقیقی را بدون فاصله یا خط تیره وارد نمایید:";
+                        await SendUserMessageAsync(chatId, promptBuyer, GetCancelReplyKeyboard(), ct: ct);
+                    }
+                    return;
+
+                case "InvWiz_ItemSearch":
+                    userState.CurrentStep = "InvWiz_ItemSelect";
+                    await _context.SaveChangesAsync(ct);
+                    await ShowItemSelectMenuAsync(chatId, userState, ct);
+                    return;
+
+                case "InvWiz_Quantity":
+                    userState.CurrentStep = "InvWiz_ItemSelect";
+                    await _context.SaveChangesAsync(ct);
+                    await ShowItemSelectMenuAsync(chatId, userState, ct);
+                    return;
+
+                case "InvWiz_Fee":
+                    userState.CurrentStep = "InvWiz_Quantity";
+                    await _context.SaveChangesAsync(ct);
+                    var itemTitleQ = data.TryGetValue("ItemTitle", out var itQ) ? itQ : "-";
+                    var itemCodeQ = data.TryGetValue("ItemCode", out var icQ) ? icQ : "-";
+                    var vatQ = data.TryGetValue("ItemVat", out var vQ) ? vQ : "10";
+                    await SendUserMessageAsync(chatId,
+                        $"📦 <b>کالای انتخابی:</b> {HtmlSafe(itemTitleQ)}\n" +
+                        $"شناسه: <code>{itemCodeQ}</code> | نرخ ارزش افزوده: <b>{vatQ}%</b>\n\n" +
+                        "لطفاً <b>تعداد یا مقدار</b> را به صورت عدد وارد فرمایید (مثال: <code>1</code> یا <code>2.5</code>):",
+                        GetCancelReplyKeyboard(),
+                        ct: ct);
+                    return;
+
+                case "InvWiz_CheckoutType":
+                    userState.CurrentStep = "InvWiz_Fee";
+                    await _context.SaveChangesAsync(ct);
+                    await ShowFeePromptAsync(chatId, userState, ct);
+                    return;
+
+                case "InvWiz_Confirm":
+                    if (data.TryGetValue("BuyerType", out var btConf) && btConf == "consumer")
+                    {
+                        userState.CurrentStep = "InvWiz_Fee";
+                        await _context.SaveChangesAsync(ct);
+                        await ShowFeePromptAsync(chatId, userState, ct);
+                    }
+                    else
+                    {
+                        userState.CurrentStep = "InvWiz_CheckoutType";
+                        await _context.SaveChangesAsync(ct);
+                        await ShowCheckoutTypeMenuAsync(chatId, userState, ct);
+                    }
                     return;
 
                 case "Reg_Name":
@@ -961,6 +1071,77 @@ namespace Invoice.Code
                     await SendUserMessageAsync(chatId, resultSb.ToString(), new { inline_keyboard = resultButtons.ToArray() }, ct: ct);
                     return;
 
+                case "InvWiz_BuyerId":
+                    var cleanBuyerId = Utils.ConvertPersianNumberToEnglish((text ?? "").Trim());
+                    var bType = data.TryGetValue("BuyerType", out var btVal) ? btVal : "real";
+                    var expectedLen = bType == "legal" ? 11 : 10;
+                    var titleStr = bType == "legal" ? "شناسه ملی ۱۱ رقمی شرکت" : "کد ملی ۱۰ رقمی";
+                    if (!Regex.IsMatch(cleanBuyerId, $@"^\d{{{expectedLen}}}$"))
+                    {
+                        await SendUserMessageAsync(chatId, $"❌ {titleStr} نامعتبر است. لطفاً دقیقاً {expectedLen} رقم بدون فاصله یا خط تیره وارد فرمایید:", GetCancelReplyKeyboard(), ct: ct);
+                        return;
+                    }
+                    data["BuyerId"] = cleanBuyerId;
+                    userState.CurrentStep = "InvWiz_ItemSelect";
+                    userState.StateDataJson = JsonSerializer.Serialize(data);
+                    await _context.SaveChangesAsync(ct);
+                    await ShowItemSelectMenuAsync(chatId, userState, ct);
+                    return;
+
+                case "InvWiz_ItemSearch":
+                    await ProcessItemSearchInputAsync(chatId, userState, text, ct);
+                    return;
+
+                case "InvWiz_Quantity":
+                    var cleanAm = Utils.ConvertPersianNumberToEnglish((text ?? "").Trim());
+                    if (!decimal.TryParse(cleanAm, NumberStyles.Any, CultureInfo.InvariantCulture, out var am) || am <= 0)
+                    {
+                        await SendUserMessageAsync(chatId, "❌ تعداد یا مقدار باید یک عدد بزرگتر از صفر باشد. لطفاً مجدداً وارد فرمایید (مثال: <code>1</code> یا <code>2.5</code>):", GetCancelReplyKeyboard(), ct: ct);
+                        return;
+                    }
+                    data["Am"] = am.ToString(CultureInfo.InvariantCulture);
+                    userState.CurrentStep = "InvWiz_Fee";
+                    userState.StateDataJson = JsonSerializer.Serialize(data);
+                    await _context.SaveChangesAsync(ct);
+                    await ShowFeePromptAsync(chatId, userState, ct);
+                    return;
+
+                case "InvWiz_Fee":
+                    var cleanFee = Utils.ConvertPersianNumberToEnglish((text ?? "").Trim());
+                    if (!decimal.TryParse(cleanFee, NumberStyles.Any, CultureInfo.InvariantCulture, out var fee) || fee < 0)
+                    {
+                        await SendUserMessageAsync(chatId, "❌ مبلغ واحد (فی) باید عددی نامنفی به ریال باشد. لطفاً مجدداً وارد فرمایید:", GetCancelReplyKeyboard(), ct: ct);
+                        return;
+                    }
+                    data["Fee"] = fee.ToString(CultureInfo.InvariantCulture);
+                    if (data.TryGetValue("BuyerType", out var btForFee) && btForFee == "consumer")
+                    {
+                        data["CheckoutType"] = "1"; // نقدی
+                        userState.CurrentStep = "InvWiz_Confirm";
+                        userState.StateDataJson = JsonSerializer.Serialize(data);
+                        await _context.SaveChangesAsync(ct);
+                        await ShowInvoiceWizardConfirmCardAsync(chatId, userState, ct);
+                        return;
+                    }
+                    userState.CurrentStep = "InvWiz_CheckoutType";
+                    userState.StateDataJson = JsonSerializer.Serialize(data);
+                    await _context.SaveChangesAsync(ct);
+                    await ShowCheckoutTypeMenuAsync(chatId, userState, ct);
+                    return;
+
+                case "Invoice_Cancel_WaitTaxId":
+                    var cleanTaxId = (text ?? "").Trim().ToUpperInvariant();
+                    if (cleanTaxId.Length != 22 || !Regex.IsMatch(cleanTaxId, @"^[A-Z0-9]{22}$"))
+                    {
+                        await SendUserMessageAsync(chatId, "❌ شماره منحصر به فرد مالیاتی باید ۲۲ رقم/حرف انگلیسی باشد. لطفاً مجدداً وارد فرمایید یا انصراف دهید:", GetCancelReplyKeyboard(), ct: ct);
+                        return;
+                    }
+                    userState.CurrentStep = "None";
+                    userState.StateDataJson = null;
+                    await _context.SaveChangesAsync(ct);
+                    await ShowCancelTaxIdConfirmAsync(chatId, cleanTaxId, ct);
+                    return;
+
                 default:
                     await ShowMainMenuAsync(chatId, ct);
                     return;
@@ -1225,7 +1406,8 @@ namespace Invoice.Code
                         var targetProf = await _context.Profiles.FirstOrDefaultAsync(p => p.Id == targetProfId && (p.Creator == user.Username || p.Id == user.ProfileId), ct);
                         if (targetProf != null)
                         {
-                            user.ProfileId = targetProf.Id;
+                            userState.ActiveProfileId = targetProf.Id;
+                            userState.LastUpdated = DateTime.Now;
                             await _context.SaveChangesAsync(ct);
 
                             await SendUserMessageAsync(chatId,
@@ -1323,6 +1505,134 @@ namespace Invoice.Code
                         ct: ct);
                     return;
                 }
+            }
+
+            // دریافت نمونه فایل اکسل صورتحساب
+            if (data == "inv_download_template")
+            {
+                await HandleDownloadTemplateAsync(chatId, ct);
+                return;
+            }
+
+            // شروع ویزارد صدور فاکتور تکی
+            if (data == "inv_create_wizard")
+            {
+                await StartInvoiceWizardAsync(chatId, userState, ct);
+                return;
+            }
+
+            // انتخاب نوع خریدار در ویزارد
+            if (data.StartsWith("inv_wiz_bt:"))
+            {
+                var bt = data.Substring("inv_wiz_bt:".Length);
+                await HandleBuyerTypeSelectedAsync(chatId, userState, bt, ct);
+                return;
+            }
+
+            // انتخاب کالا با شناسه در ویزارد
+            if (data.StartsWith("inv_wiz_item:"))
+            {
+                var code = data.Substring("inv_wiz_item:".Length);
+                await SelectItemByCodeAsync(chatId, userState, code, ct);
+                return;
+            }
+
+            // کلیک روی دکمه جستجوی کالا
+            if (data == "inv_wiz_item_search_btn")
+            {
+                userState.CurrentStep = "InvWiz_ItemSearch";
+                await _context.SaveChangesAsync(ct);
+                await SendUserMessageAsync(chatId,
+                    "🔍 <b>جستجو و انتخاب شناسه کالا/خدمت</b>\n\n" +
+                    "لطفاً شناسه ۱۳ رقمی کالا را وارد فرمایید یا بخشی از نام کالا را جهت جستجو ارسال نمایید:",
+                    GetCancelReplyKeyboard(),
+                    ct: ct);
+                return;
+            }
+
+            // تایید فی پیش‌فرض در ویزارد
+            if (data.StartsWith("inv_wiz_fee_default:"))
+            {
+                var feeVal = data.Substring("inv_wiz_fee_default:".Length);
+                await HandleDefaultFeeSelectedAsync(chatId, userState, feeVal, ct);
+                return;
+            }
+
+            // انتخاب روش تسویه در ویزارد
+            if (data.StartsWith("inv_wiz_setm:"))
+            {
+                var setmVal = data.Substring("inv_wiz_setm:".Length);
+                await HandleCheckoutTypeSelectedAsync(chatId, userState, setmVal, ct);
+                return;
+            }
+
+            // تایید نهایی و ارسال فاکتور ویزارد به سامانه مودیان
+            if (data == "inv_wiz_send")
+            {
+                await SendSingleInvoiceWizardAsync(chatId, userState, ct);
+                return;
+            }
+
+            // بازگشت در ویزارد
+            if (data == "inv_wiz_back")
+            {
+                await HandleGoBackAsync(chatId, userState, ct);
+                return;
+            }
+
+            // انصراف از ویزارد
+            if (data == "inv_wiz_cancel")
+            {
+                userState.CurrentStep = "None";
+                userState.StateDataJson = null;
+                await _context.SaveChangesAsync(ct);
+                await SendUserMessageAsync(chatId, "❌ صدور فاکتور لغو شد.", ct: ct);
+                await ShowMainMenuAsync(chatId, ct);
+                return;
+            }
+
+            // تایید ارسال گروهی فاکتورهای اکسل
+            if (data == "inv_excel_confirm")
+            {
+                await SendExcelDraftInvoicesAsync(chatId, ct);
+                return;
+            }
+
+            // لغو و حذف پیش‌نویس‌های اکسل
+            if (data == "inv_excel_cancel")
+            {
+                await CancelExcelDraftsAsync(chatId, ct);
+                return;
+            }
+
+            // نمایش کارت تایید ابطال فاکتور از لیست اخیر
+            if (data.StartsWith("inv_cancel:"))
+            {
+                var invIdStr = data.Substring("inv_cancel:".Length);
+                if (int.TryParse(invIdStr, out var invId))
+                {
+                    await ShowCancelInvoiceConfirmAsync(chatId, invId, ct);
+                }
+                return;
+            }
+
+            // تایید نهایی ابطال فاکتور انتخاب‌شده با ID
+            if (data.StartsWith("inv_cancel_confirm:"))
+            {
+                var invIdStr = data.Substring("inv_cancel_confirm:".Length);
+                if (int.TryParse(invIdStr, out var invId))
+                {
+                    await ExecuteInvoiceCancellationAsync(chatId, invId, null, ct);
+                }
+                return;
+            }
+
+            // تایید نهایی ابطال با شناسه مالیاتی ۲۲ رقمی دستی
+            if (data.StartsWith("inv_cancel_taxid_confirm:"))
+            {
+                var taxIdVal = data.Substring("inv_cancel_taxid_confirm:".Length);
+                await ExecuteInvoiceCancellationAsync(chatId, null, taxIdVal, ct);
+                return;
             }
         }
 
@@ -1842,6 +2152,99 @@ namespace Invoice.Code
             }
         }
 
+        public async Task<bool> SendUserDocumentAsync(string chatId, byte[] fileBytes, string fileName, string? caption = null, object? replyMarkup = null, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(chatId) || fileBytes == null || fileBytes.Length == 0) return false;
+
+            try
+            {
+                var settings = await _settingsService.GetSettingsAsync();
+                var token = settings.UserBotToken?.Trim();
+                if (string.IsNullOrWhiteSpace(token)) return false;
+
+                var client = _httpClientFactory.CreateClient("BaleClient");
+                var url = $"https://tapi.bale.ai/bot{token}/sendDocument";
+
+                using var content = new MultipartFormDataContent();
+                content.Add(new StringContent(chatId), "chat_id");
+
+                var fileContent = new ByteArrayContent(fileBytes);
+                fileContent.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+                content.Add(fileContent, "document", fileName);
+
+                if (!string.IsNullOrWhiteSpace(caption))
+                {
+                    var effectiveCaption = caption;
+                    if (caption.Contains('<') && caption.Contains('>'))
+                    {
+                        effectiveCaption = ConvertHtmlToMarkdown(caption);
+                    }
+                    content.Add(new StringContent(effectiveCaption), "caption");
+                }
+
+                if (replyMarkup != null)
+                {
+                    content.Add(new StringContent(JsonSerializer.Serialize(replyMarkup)), "reply_markup");
+                }
+
+                var response = await client.PostAsync(url, content, ct);
+                if (response.IsSuccessStatusCode)
+                {
+                    return true;
+                }
+
+                var err = await response.Content.ReadAsStringAsync(ct);
+                _logger.LogWarning("خطا در ارسال سند به بله (وضعیت: {Status}، خطا: {Error})", response.StatusCode, err);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "خطا در ارسال سند به چت بله {ChatId}", chatId);
+                return false;
+            }
+        }
+
+        public async Task<byte[]?> DownloadFileAsync(string fileId, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(fileId)) return null;
+
+            try
+            {
+                var settings = await _settingsService.GetSettingsAsync();
+                var token = settings.UserBotToken?.Trim();
+                if (string.IsNullOrWhiteSpace(token)) return null;
+
+                var client = _httpClientFactory.CreateClient("BaleClient");
+                var getFileUrl = $"https://tapi.bale.ai/bot{token}/getFile?file_id={fileId}";
+
+                var response = await client.GetAsync(getFileUrl, ct);
+                if (!response.IsSuccessStatusCode) return null;
+
+                var json = await response.Content.ReadAsStringAsync(ct);
+                using var doc = JsonDocument.Parse(json);
+                if (!doc.RootElement.TryGetProperty("result", out var resultEl)) return null;
+
+                string? filePath = null;
+                if (resultEl.TryGetProperty("file_path", out var fpEl))
+                {
+                    filePath = fpEl.GetString();
+                }
+
+                if (string.IsNullOrWhiteSpace(filePath)) return null;
+
+                var downloadUrl = filePath.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                    ? filePath
+                    : $"https://tapi.bale.ai/file/bot{token}/{filePath}";
+
+                return await client.GetByteArrayAsync(downloadUrl, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "خطا در دانلود فایل {FileId} از بله", fileId);
+                return null;
+            }
+        }
+
         public static string ConvertHtmlToMarkdown(string html)
         {
             if (string.IsNullOrEmpty(html)) return string.Empty;
@@ -1888,12 +2291,14 @@ namespace Invoice.Code
         private async Task ShowMainMenuAsync(string chatId, CancellationToken ct)
         {
             var user = await _context.Users.Include(u => u.Profile).FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
-            var isRegistered = user != null && user.Profile != null;
             var isReseller = user != null && string.Equals(user.Role, "reseller", StringComparison.OrdinalIgnoreCase);
+            var userState = await _context.BaleUserStates.FindAsync(new object[] { chatId }, ct);
+            var effectiveProfile = await GetEffectiveProfileAsync(user, userState, ct);
+            var isRegistered = user != null && (user.Profile != null || effectiveProfile != null);
 
             var welcome = isRegistered
-                ? $"سلام <b>{HtmlSafe(user.DisplayName)}</b> عزیز، به پنل اختصاصی سامانه مودیان خوش آمدید." +
-                  (isReseller && user.Profile != null ? $"\n🏢 <b>پروفایل فعال جاری:</b> {HtmlSafe(user.Profile.DisplayName)} (حافظه مالیاتی: <code>{user.Profile.MemoryId ?? "-"}</code>)" : "") +
+                ? $"سلام <b>{HtmlSafe(user!.DisplayName)}</b> عزیز، به پنل اختصاصی سامانه مودیان خوش آمدید." +
+                  (isReseller && effectiveProfile != null ? $"\n🏢 <b>پروفایل فعال جاری:</b> {HtmlSafe(effectiveProfile.DisplayName)} (حافظه مالیاتی: <code>{effectiveProfile.MemoryId ?? "-"}</code>)" : "") +
                   "\nجهت انجام امور از منوی زیر استفاده فرمایید:"
                 : "👋 سلام، به <b>ربات سامانه صدور فاکتور و کارپوشه مودیان</b> خوش آمدید.\n\n" +
                   "جهت دریافت شناسه یکتا و ارسال فاکتور، لطفاً از گزینه‌های زیر استفاده نمایید:";
@@ -1949,6 +2354,61 @@ namespace Invoice.Code
             };
         }
 
+        private async Task<Profile?> GetEffectiveProfileAsync(User? user, string? chatId = null, CancellationToken ct = default)
+        {
+            if (user == null) return null;
+            BaleUserState? state = null;
+            if (!string.IsNullOrEmpty(chatId))
+            {
+                state = await _context.BaleUserStates.FindAsync(new object[] { chatId }, ct);
+            }
+            return await GetEffectiveProfileAsync(user, state, ct);
+        }
+
+        private async Task<Profile?> GetEffectiveProfileAsync(User? user, BaleUserState? userState, CancellationToken ct = default)
+        {
+            if (user == null) return null;
+
+            // اگر کاربر نماینده است
+            if (string.Equals(user.Role, "reseller", StringComparison.OrdinalIgnoreCase))
+            {
+                // ۱. اگر در وضعیت گفتگوی ربات، پروفایل فعالی انتخاب شده باشد
+                if (userState?.ActiveProfileId != null)
+                {
+                    var activeProf = await _context.Profiles.FirstOrDefaultAsync(
+                        p => p.Id == userState.ActiveProfileId.Value && (p.Creator == user.Username || p.Id == user.ProfileId), ct);
+                    if (activeProf != null)
+                        return activeProf;
+                }
+
+                // ۲. اگر هنوز انتخابی انجام نشده، اولین پروفایل ساخته‌شده توسط نماینده (مشابه نسخه وب در SelectedProfile)
+                var firstSub = await _context.Profiles
+                    .Where(p => p.Creator == user.Username && p.Id != user.ProfileId)
+                    .OrderBy(p => p.FirstName).ThenBy(p => p.Lastname)
+                    .FirstOrDefaultAsync(ct);
+                if (firstSub != null)
+                    return firstSub;
+
+                // ۳. در غیر این صورت، پروفایل متصل به خود کاربر
+                if (user.Profile != null) return user.Profile;
+                if (user.ProfileId != null)
+                {
+                    return await _context.Profiles.FirstOrDefaultAsync(p => p.Id == user.ProfileId.Value, ct);
+                }
+            }
+            else
+            {
+                // برای کاربر عادی
+                if (user.Profile != null) return user.Profile;
+                if (user.ProfileId != null)
+                {
+                    return await _context.Profiles.FirstOrDefaultAsync(p => p.Id == user.ProfileId.Value, ct);
+                }
+            }
+
+            return null;
+        }
+
         private async Task ShowResellerProfilesAsync(string chatId, CancellationToken ct)
         {
             var user = await _context.Users.Include(u => u.Profile).FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
@@ -1960,6 +2420,10 @@ namespace Invoice.Code
                     ct: ct);
                 return;
             }
+
+            var userState = await _context.BaleUserStates.FindAsync(new object[] { chatId }, ct);
+            var effectiveProfile = await GetEffectiveProfileAsync(user, userState, ct);
+            var activeProfileId = effectiveProfile?.Id;
 
             var profiles = await _context.Profiles
                 .Where(p => p.Creator == user.Username || p.Id == user.ProfileId)
@@ -1979,7 +2443,7 @@ namespace Invoice.Code
             var buttons = new List<object[]>();
             foreach (var p in profiles)
             {
-                var isActive = p.Id == user.ProfileId;
+                var isActive = p.Id == activeProfileId;
                 var label = isActive
                     ? $"✅ {p.DisplayName} (فعال)"
                     : $"🔘 {p.DisplayName}";
@@ -1989,9 +2453,9 @@ namespace Invoice.Code
 
             buttons.Add(new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } });
 
-            var currentName = user.Profile != null ? user.Profile.DisplayName : "انتخاب نشده";
-            var currentMem = user.Profile?.MemoryId ?? "-";
-            var currentTin = user.Profile?.TinCode ?? "-";
+            var currentName = effectiveProfile != null ? effectiveProfile.DisplayName : "انتخاب نشده";
+            var currentMem = effectiveProfile?.MemoryId ?? "-";
+            var currentTin = effectiveProfile?.TinCode ?? "-";
 
             var msg = "🏢 <b>مدیریت و انتخاب پروفایل فعال نمایندگی</b>\n\n" +
                       $"👤 <b>نماینده:</b> {HtmlSafe(user.Username)}\n" +
@@ -2022,6 +2486,11 @@ namespace Invoice.Code
                 .Take(15)
                 .ToListAsync(ct);
 
+            var stuffCodes = favorites.Select(f => f.StuffCode).ToList();
+            var userProds = await _context.Products
+                .Where(p => p.Creator == user.Username && stuffCodes.Contains(p.Sstid))
+                .ToDictionaryAsync(p => p.Sstid, ct);
+
             var sb = new StringBuilder();
             sb.AppendLine("⭐ <b>لیست کالاهای منتخب و علاقه‌مندی‌های شما</b>\n");
 
@@ -2036,8 +2505,9 @@ namespace Invoice.Code
                 int idx = 1;
                 foreach (var f in favorites)
                 {
-                    var title = f.Stuff?.Title ?? "بدون شرح";
-                    var vat = f.Stuff != null ? $"{f.Stuff.VatRate}%" : "-";
+                    userProds.TryGetValue(f.StuffCode, out var prod);
+                    var title = prod?.Sstt ?? f.Stuff?.Title ?? "بدون شرح";
+                    var vat = f.Stuff != null ? $"{f.Stuff.VatRate}%" : (prod != null ? $"{(int)prod.Vra}%" : "-");
                     sb.AppendLine($"{idx}️⃣ <b>{HtmlSafe(title)}</b>");
                     sb.AppendLine($"   شناسه: <code>{f.StuffCode}</code> | مالیات: <code>{vat}</code>");
                     idx++;
@@ -2052,7 +2522,8 @@ namespace Invoice.Code
                 // دکمه‌های حذف برای ۵ کالای اول
                 foreach (var f in favorites.Take(5))
                 {
-                    var shortTitle = (f.Stuff?.Title ?? f.StuffCode);
+                    userProds.TryGetValue(f.StuffCode, out var prod);
+                    var shortTitle = prod?.Sstt ?? f.Stuff?.Title ?? f.StuffCode;
                     if (shortTitle.Length > 20) shortTitle = shortTitle.Substring(0, 18) + "...";
                     inlineButtons.Add(new[]
                     {
@@ -2126,5 +2597,1111 @@ namespace Invoice.Code
             }
             return state;
         }
+
+        #region فاز ۳: مدیریت ارسال و ابطال صورتحساب‌های مالیاتی در پیام‌رسان بله
+
+        private async Task HandleDownloadTemplateAsync(string chatId, CancellationToken ct)
+        {
+            try
+            {
+                var templatePath = Path.Combine(_env?.WebRootPath ?? "wwwroot", "template.xlsx");
+                byte[] bytes;
+
+                if (System.IO.File.Exists(templatePath))
+                {
+                    bytes = await System.IO.File.ReadAllBytesAsync(templatePath, ct);
+                }
+                else
+                {
+                    // تولید قالب آماده اکسل در حافظه در صورت عدم وجود فایل در دیسک
+                    using var ms = new MemoryStream();
+                    using (var doc = SpreadsheetDocument.Create(ms, DocumentFormat.OpenXml.SpreadsheetDocumentType.Workbook))
+                    {
+                        var wbPart = doc.AddWorkbookPart();
+                        wbPart.Workbook = new DocumentFormat.OpenXml.Spreadsheet.Workbook();
+                        var wsPart = wbPart.AddNewPart<WorksheetPart>();
+                        var sheetData = new DocumentFormat.OpenXml.Spreadsheet.SheetData();
+                        wsPart.Worksheet = new DocumentFormat.OpenXml.Spreadsheet.Worksheet(sheetData);
+
+                        var sheets = doc.WorkbookPart!.Workbook.AppendChild(new DocumentFormat.OpenXml.Spreadsheet.Sheets());
+                        sheets.Append(new DocumentFormat.OpenXml.Spreadsheet.Sheet
+                        {
+                            Id = doc.WorkbookPart.GetIdOfPart(wsPart),
+                            SheetId = 1,
+                            Name = "Invoices"
+                        });
+
+                        var headerRow = new DocumentFormat.OpenXml.Spreadsheet.Row();
+                        var headers = new[]
+                        {
+                            "کد فاکتور", "تاریخ فاکتور", "نوع فاکتور", "الگوی فاکتور", "روش پرداخت", "نوع خریدار",
+                            "شناسه خریدار", "کد کالا", "شرح کالا", "تعداد", "فی (ریال)", "تخفیف (ریال)", "نرخ مالیات", "واحد سنجش"
+                        };
+                        foreach (var h in headers)
+                        {
+                            var cell = new DocumentFormat.OpenXml.Spreadsheet.Cell
+                            {
+                                DataType = DocumentFormat.OpenXml.Spreadsheet.CellValues.String,
+                                CellValue = new DocumentFormat.OpenXml.Spreadsheet.CellValue(h)
+                            };
+                            headerRow.Append(cell);
+                        }
+                        sheetData.Append(headerRow);
+                        doc.Save();
+                    }
+                    bytes = ms.ToArray();
+                }
+
+                await SendUserDocumentAsync(chatId, bytes, "Invoice_Template.xlsx",
+                    "📥 <b>قالب نمونه اکسل جهت ارسال گروهی صورتحساب‌ها</b>\n\n" +
+                    "لطفاً فاکتورهای خود را طبق ستون‌های این فایل تنظیم نموده و سپس همین فایل را در چت ارسال فرمایید.",
+                    ct: ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "خطا در دانلود یا ارسال فایل نمونه اکسل فاکتور به چت {ChatId}", chatId);
+                await SendUserMessageAsync(chatId, "⚠️ خطا در دریافت فایل نمونه. لطفاً مجدداً تلاش فرمایید.", ct: ct);
+            }
+        }
+
+        private async Task HandleDocumentMessageAsync(string chatId, JsonElement docEl, CancellationToken ct)
+        {
+            var fileName = docEl.TryGetProperty("file_name", out var fnProp) ? fnProp.GetString() : "file.xlsx";
+            var fileId = docEl.TryGetProperty("file_id", out var fiProp) ? fiProp.GetString() : null;
+
+            if (string.IsNullOrWhiteSpace(fileName) || !fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+            {
+                await SendUserMessageAsync(chatId,
+                    "⚠️ لطفاً فایل صورتحساب‌ها را با فرمت اکسل (<code>.xlsx</code>) ارسال فرمایید.\n" +
+                    "جهت دریافت قالب نمونه، می‌توانید از دستور «📄 ارسال فاکتور جدید» و دکمه دانلود نمونه استفاده نمایید.",
+                    ct: ct);
+                return;
+            }
+
+            var user = await _context.Users
+                .Include(u => u.Profile)
+                .FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+
+            var effectiveProfile = await GetEffectiveProfileAsync(user, chatId, ct);
+            if (user == null || effectiveProfile == null)
+            {
+                await SendUserMessageAsync(chatId,
+                    "⚠️ برای ارسال فاکتور، ابتدا باید در سامانه ثبت‌نام نموده یا وارد حساب کاربری خود شوید.",
+                    GetBackToMenuInlineKeyboard(),
+                    ct: ct);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(fileId))
+            {
+                await SendUserMessageAsync(chatId, "⚠️ امکان دریافت شناسه فایل وجود ندارد. لطفاً مجدداً فایل اکسل را ارسال فرمایید.", ct: ct);
+                return;
+            }
+
+            await SendUserMessageAsync(chatId, "⏳ در حال دریافت و بررسی فایل اکسل صورتحساب‌ها...", ct: ct);
+
+            var bytes = await DownloadFileAsync(fileId, ct);
+            if (bytes == null || bytes.Length == 0)
+            {
+                await SendUserMessageAsync(chatId, "❌ خطا در دانلود فایل اکسل از پیام‌رسان بله. لطفاً مجدداً ارسال فرمایید.", ct: ct);
+                return;
+            }
+
+            try
+            {
+                using var ms = new MemoryStream(bytes);
+                var excelDoc = ExcelHelp.Open(ms);
+                if (excelDoc.Rows == null || !excelDoc.Rows.Any())
+                {
+                    await SendUserMessageAsync(chatId, "⚠️ فایل اکسل ارسالی خالی است یا سطرهای داده در آن یافت نشد.", ct: ct);
+                    return;
+                }
+
+                // حذف پیش‌نویس‌های قبلی معلق کاربر برای جلوگیری از تداخل
+                var oldDrafts = await _context.Invoices
+                    .Where(i => i.Draft && i.Sender == user.Username)
+                    .ToListAsync(ct);
+                if (oldDrafts.Any())
+                {
+                    _context.Invoices.RemoveRange(oldDrafts);
+                    await _context.SaveChangesAsync(ct);
+                }
+
+                var colMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                for (int c = 0; c < excelDoc.ColumnHeaders.Count; c++)
+                {
+                    var h = (excelDoc.ColumnHeaders[c] ?? "").Trim();
+                    if (h.Contains("کد فاکتور") || h.Contains("شماره فاکتور") || h.Equals("invoicecode", StringComparison.OrdinalIgnoreCase)) colMap["Code"] = c;
+                    else if (h.Contains("تاریخ") || h.Equals("invoicedate", StringComparison.OrdinalIgnoreCase)) colMap["Date"] = c;
+                    else if (h.Contains("نوع فاکتور") || h.Contains("نوع صورتحساب") || h.Equals("invoicetype", StringComparison.OrdinalIgnoreCase)) colMap["Type"] = c;
+                    else if (h.Contains("الگو") || h.Equals("invoicepattern", StringComparison.OrdinalIgnoreCase)) colMap["Pattern"] = c;
+                    else if (h.Contains("روش") || h.Contains("تسویه") || h.Equals("paymentmethod", StringComparison.OrdinalIgnoreCase)) colMap["Payment"] = c;
+                    else if (h.Contains("شخص") || h.Contains("خریدار") && h.Contains("نوع") || h.Equals("persontype", StringComparison.OrdinalIgnoreCase)) colMap["BuyerType"] = c;
+                    else if (h.Contains("اقتصادی") || h.Contains("ملی") || h.Equals("buyereconomiccode", StringComparison.OrdinalIgnoreCase)) colMap["BuyerTin"] = c;
+                    else if (h.Contains("شناسه کالا") || h.Contains("کد کالا") || h.Equals("productcode", StringComparison.OrdinalIgnoreCase) || h.Equals("sstid", StringComparison.OrdinalIgnoreCase)) colMap["ProductCode"] = c;
+                    else if (h.Contains("شرح") || h.Contains("نام کالا") || h.Equals("productdescription", StringComparison.OrdinalIgnoreCase) || h.Equals("sstt", StringComparison.OrdinalIgnoreCase)) colMap["Title"] = c;
+                    else if (h.Contains("تعداد") || h.Contains("مقدار") || h.Equals("quantity", StringComparison.OrdinalIgnoreCase) || h.Equals("am", StringComparison.OrdinalIgnoreCase)) colMap["Quantity"] = c;
+                    else if (h.Contains("فی") || h.Contains("مبلغ واحد") || h.Equals("unitprice", StringComparison.OrdinalIgnoreCase) || h.Equals("fee", StringComparison.OrdinalIgnoreCase)) colMap["Fee"] = c;
+                    else if (h.Contains("تخفیف") || h.Equals("discount", StringComparison.OrdinalIgnoreCase) || h.Equals("dis", StringComparison.OrdinalIgnoreCase)) colMap["Discount"] = c;
+                    else if (h.Contains("مالیات") || h.Contains("ارزش افزوده") || h.Equals("taxpercent", StringComparison.OrdinalIgnoreCase) || h.Equals("vra", StringComparison.OrdinalIgnoreCase)) colMap["Vat"] = c;
+                    else if (h.Contains("واحد") || h.Equals("unit", StringComparison.OrdinalIgnoreCase) || h.Equals("mu", StringComparison.OrdinalIgnoreCase)) colMap["Unit"] = c;
+                }
+
+                // در صورت عدم تطابق نام ستون‌ها، از نگاشت موقعیتی پیش‌فرض استفاده می‌شود
+                int getCol(string key, int def) => colMap.TryGetValue(key, out var idx) ? idx : def;
+                int cCode = getCol("Code", 0);
+                int cDate = getCol("Date", 1);
+                int cType = getCol("Type", 2);
+                int cPat = getCol("Pattern", 3);
+                int cPay = getCol("Payment", 4);
+                int cBT = getCol("BuyerType", 5);
+                int cTin = getCol("BuyerTin", 6);
+                int cProd = getCol("ProductCode", 7);
+                int cTitle = getCol("Title", 8);
+                int cAm = getCol("Quantity", 9);
+                int cFee = getCol("Fee", 10);
+                int cDis = getCol("Discount", 11);
+                int cVat = getCol("Vat", 12);
+                int cUnit = getCol("Unit", 13);
+
+                string getCell(ExcelRow r, int cIdx)
+                {
+                    if (cIdx >= 0 && cIdx < r.Cells.Count) return (r.Cells[cIdx] ?? "").Trim();
+                    return string.Empty;
+                }
+
+                var measureUnits = await _context.MeasureUnits.AsNoTracking().ToListAsync(ct);
+                var invoiceGroups = new Dictionary<string, Invoices.Models.Invoice>(StringComparer.OrdinalIgnoreCase);
+                int totalItemsCount = 0;
+                long totalSumAmount = 0;
+
+                for (int rIdx = 0; rIdx < excelDoc.Rows.Count; rIdx++)
+                {
+                    var row = excelDoc.Rows[rIdx];
+                    var rawCode = getCell(row, cCode);
+                    var rawProd = getCell(row, cProd);
+                    if (string.IsNullOrWhiteSpace(rawCode) && string.IsNullOrWhiteSpace(rawProd)) continue;
+
+                    var invoiceKey = !string.IsNullOrWhiteSpace(rawCode) ? rawCode : $"INV_{rIdx + 1}";
+
+                    if (!invoiceGroups.TryGetValue(invoiceKey, out var currentInv))
+                    {
+                        var rawDate = getCell(row, cDate);
+                        var rawType = getCell(row, cType);
+                        var rawPat = getCell(row, cPat);
+                        var rawPay = getCell(row, cPay);
+                        var rawBT = getCell(row, cBT);
+                        var rawTin = getCell(row, cTin);
+
+                        var invType = rawType.Contains("دوم") ? InvoiceType.نوع_دوم : InvoiceType.نوع_اول;
+                        var invPat = InvoicePattern.فروش;
+                        if (Enum.TryParse<InvoicePattern>(rawPat.Replace(" ", "_"), true, out var pParsed)) invPat = pParsed;
+
+                        var setm = CheckoutType.نقدی;
+                        if (rawPay.Contains("نسیه") && rawPay.Contains("نقد")) setm = CheckoutType.نقد_نسیه;
+                        else if (rawPay.Contains("نسیه")) setm = CheckoutType.نسیه;
+
+                        PersonType? personType = PersonType.حقیقی;
+                        if (rawBT.Contains("حقوقی")) personType = PersonType.حقوقی;
+                        else if (rawBT.Contains("مصرف") || invType == InvoiceType.نوع_دوم) personType = null;
+
+                        var nowPersianDate = MyDate.GetPersianDate(DateTime.Now)?.ToShortDateString() ?? DateTime.Now.ToString("yyyy/MM/dd");
+                        currentInv = new Invoices.Models.Invoice
+                        {
+                            Sender = user.Username,
+                            Ins = InvoiceTopic.اصلی,
+                            Inty = invType,
+                            Inp = invPat,
+                            InvoiceDate = !string.IsNullOrWhiteSpace(rawDate) ? rawDate : nowPersianDate,
+                            Tob = personType,
+                            Tinb = Utils.ConvertPersianNumberToEnglish(rawTin),
+                            Setm = setm,
+                            Draft = true,
+                            Status = InvoiceStatus.در_انتظار_ارسال,
+                            ProfileId = effectiveProfile.Id,
+                            Tins = effectiveProfile.TinCode,
+                            Indatim = DateTime.Now
+                        };
+
+                        invoiceGroups[invoiceKey] = currentInv;
+                        _context.Invoices.Add(currentInv);
+                    }
+
+                    // قلم کالا
+                    var cleanProdCode = ImportModel.NormalizeStuffCode(rawProd) ?? rawProd;
+                    var prodTitle = getCell(row, cTitle);
+                    if (string.IsNullOrWhiteSpace(prodTitle)) prodTitle = cleanProdCode;
+
+                    var amStr = Utils.ConvertPersianNumberToEnglish(getCell(row, cAm));
+                    decimal.TryParse(amStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var am);
+                    if (am <= 0) am = 1;
+
+                    var feeStr = Utils.ConvertPersianNumberToEnglish(getCell(row, cFee));
+                    long.TryParse(feeStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var fee);
+
+                    var disStr = Utils.ConvertPersianNumberToEnglish(getCell(row, cDis));
+                    long.TryParse(disStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var dis);
+
+                    var vatRate = ImportModel.ParseVatRate(getCell(row, cVat));
+                    var vra = VatRate.درصد_10;
+                    if (vatRate == 0) vra = VatRate.معاف;
+                    else if (vatRate == 9) vra = VatRate.درصد_9;
+                    else if (vatRate == 10) vra = VatRate.درصد_10;
+                    else if (vatRate == 16) vra = VatRate.درصد_16;
+
+                    var rawUnit = getCell(row, cUnit).Replace(" ", "");
+                    var mu = measureUnits.FirstOrDefault(m => m.Title.Replace(" ", "").Contains(rawUnit))?.Code ?? "162";
+
+                    var item = new InvoiceItem
+                    {
+                        Sstid = cleanProdCode,
+                        Sstt = prodTitle,
+                        Am = am,
+                        Fee = fee,
+                        Dis = dis,
+                        Vra = vra,
+                        Mu = mu
+                    };
+
+                    currentInv.InvoiceItems.Add(item);
+                    totalItemsCount++;
+                    totalSumAmount += (long)(am * fee);
+                }
+
+                if (!invoiceGroups.Any())
+                {
+                    await SendUserMessageAsync(chatId, "⚠️ هیچ فاکتور معتبری در فایل اکسل شناسایی نشد.", ct: ct);
+                    return;
+                }
+
+                await _context.SaveChangesAsync(ct);
+
+                var isSubscribed = user.ExpireDate > DateTime.Now;
+                var perInvoiceCost = Utils.GetPerInvoiceCost(user, _context);
+                var totalCost = isSubscribed ? 0 : invoiceGroups.Count * perInvoiceCost;
+
+                var costText = isSubscribed
+                    ? "🎁 <b>رایگان</b> (دارای اشتراک فعال سامانه)"
+                    : $"<b>{totalCost:N0} ریال</b> (موجودی فعلی: <b>{user.Vallet:N0} ریال</b>)";
+
+                var summary = "📊 <b>پیش‌نویس فاکتورهای اکسل با موفقیت ایجاد شد</b>\n\n" +
+                              $"🏢 <b>پروفایل:</b> {HtmlSafe(effectiveProfile.DisplayName)}\n" +
+                              $"📑 <b>تعداد صورتحساب‌ها:</b> <b>{invoiceGroups.Count} فاکتور</b>\n" +
+                              $"📦 <b>مجموع اقلام کالا/خدمت:</b> <b>{totalItemsCount} ردیف</b>\n" +
+                              $"💰 <b>مجموع مبلغ فاکتورها:</b> <b>{totalSumAmount:N0} ریال</b>\n" +
+                              $"💳 <b>هزینه ارسال:</b> {costText}\n\n" +
+                              "آیا مایل به تایید نهایی و ارسال به سامانه مودیان هستید؟";
+
+                var buttons = new[]
+                {
+                    new[] { new { text = "🚀 تایید و ارسال به سامانه مودیان", callback_data = "inv_excel_confirm" } },
+                    new[] { new { text = "❌ لغو و حذف پیش‌نویس‌ها", callback_data = "inv_excel_cancel" } }
+                };
+
+                await SendUserMessageAsync(chatId, summary, new { inline_keyboard = buttons }, ct: ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "خطا در پردازش فایل اکسل صورتحساب از چت {ChatId}", chatId);
+                await SendUserMessageAsync(chatId, "❌ خطا در پردازش فایل اکسل: " + ex.Message, ct: ct);
+            }
+        }
+
+        private async Task SendExcelDraftInvoicesAsync(string chatId, CancellationToken ct)
+        {
+            var user = await _context.Users
+                .Include(u => u.Profile)
+                .FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+
+            var effectiveProfile = await GetEffectiveProfileAsync(user, chatId, ct);
+            if (user == null || effectiveProfile == null)
+            {
+                await SendUserMessageAsync(chatId, "⚠️ دسترسی نامعتبر است.", ct: ct);
+                return;
+            }
+
+            var drafts = await _context.Invoices
+                .Include(i => i.InvoiceItems)
+                .Include(i => i.Payments)
+                .Include(i => i.Profile)
+                .Where(i => i.Draft && i.Sender == user.Username)
+                .ToListAsync(ct);
+
+            if (!drafts.Any())
+            {
+                await SendUserMessageAsync(chatId, "⚠️ هیچ فاکتور پیش‌نویسی جهت ارسال یافت نشد.", ct: ct);
+                await ShowMainMenuAsync(chatId, ct);
+                return;
+            }
+
+            var isSubscribed = user.ExpireDate > DateTime.Now;
+            var perInvoiceCost = Utils.GetPerInvoiceCost(user, _context);
+            var totalCost = isSubscribed ? 0 : drafts.Count * perInvoiceCost;
+
+            if (!isSubscribed && user.Vallet < totalCost)
+            {
+                await SendUserMessageAsync(chatId,
+                    $"⚠️ موجودی کیف پول شما جهت ارسال این فاکتورها کافی نیست.\n" +
+                    $"• هزینه مورد نیاز: <b>{totalCost:N0} ریال</b>\n" +
+                    $"• موجودی کیف پول: <b>{user.Vallet:N0} ریال</b>\n\n" +
+                    "لطفاً از طریق منوی «💰 کیف پول و موجودی» حساب خود را شارژ فرمایید.",
+                    GetBackToMenuInlineKeyboard(),
+                    ct: ct);
+                return;
+            }
+
+            await SendUserMessageAsync(chatId, $"⏳ در حال امضا و ارسال {drafts.Count} صورتحساب به سامانه مودیان...", ct: ct);
+
+            int successCount = 0;
+            int failedCount = 0;
+            var sbResults = new StringBuilder();
+
+            foreach (var inv in drafts)
+            {
+                try
+                {
+                    var response = _invoiceSender.SendInvoice(inv);
+                    inv.Status = response.Status;
+                    inv.ReferenceCode = response.RefId;
+                    inv.ResponseMessage = response.Response;
+                    inv.UID = response.UID;
+                    inv.Taxid = response.TaxId;
+                    inv.SendDate = DateTime.Now;
+
+                    if (response.Status == InvoiceStatus.موفق)
+                    {
+                        inv.Draft = false;
+                        successCount++;
+
+                        if (!isSubscribed)
+                        {
+                            user.Vallet -= perInvoiceCost;
+                            user.InvoiceSent = true;
+                        }
+                    }
+                    else
+                    {
+                        failedCount++;
+                        inv.Draft = false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "خطا در ارسال فاکتور پیش‌نویس #{InvoiceId} به مودیان", inv.Id);
+                    inv.Status = InvoiceStatus.خطا_در_ارسال;
+                    inv.Draft = false;
+                    failedCount++;
+                }
+            }
+
+            await _context.SaveChangesAsync(ct);
+
+            await _activityLogger.LogAsync("بله", "ارسال گروهی فاکتور اکسل",
+                $"ارسال گروهی {drafts.Count} فاکتور توسط کاربر {user.Username} ({successCount} موفق، {failedCount} ناموفق)",
+                entityId: successCount.ToString(), ct: ct);
+
+            var reportMsg = $"🏁 <b>گزارش ارسال فاکتورها به سامانه مودیان</b>\n\n" +
+                            $"✅ صورتحساب‌های موفق: <b>{successCount} عدد</b>\n" +
+                            $"❌ صورتحساب‌های ناموفق: <b>{failedCount} عدد</b>\n" +
+                            $"💰 موجودی باقیمانده کیف پول: <b>{user.Vallet:N0} ریال</b>\n\n" +
+                            "می‌توانید وضعیت و استعلام هر فاکتور را از طریق پنل وب یا پشتیبانی پیگیری نمایید.";
+
+            await SendUserMessageAsync(chatId, reportMsg, ct: ct);
+            await ShowMainMenuAsync(chatId, ct);
+        }
+
+        private async Task CancelExcelDraftsAsync(string chatId, CancellationToken ct)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+            if (user != null)
+            {
+                var drafts = await _context.Invoices
+                    .Where(i => i.Draft && i.Sender == user.Username)
+                    .ToListAsync(ct);
+                if (drafts.Any())
+                {
+                    _context.Invoices.RemoveRange(drafts);
+                    await _context.SaveChangesAsync(ct);
+                }
+            }
+
+            await SendUserMessageAsync(chatId, "🗑️ کلیه پیش‌نویس‌های فاکتور اکسل لغو و پاکسازی شدند.", ct: ct);
+            await ShowMainMenuAsync(chatId, ct);
+        }
+
+        private async Task StartInvoiceWizardAsync(string chatId, BaleUserState userState, CancellationToken ct)
+        {
+            var user = await _context.Users
+                .Include(u => u.Profile)
+                .FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+
+            var effectiveProfile = await GetEffectiveProfileAsync(user, userState, ct);
+            if (user == null || effectiveProfile == null)
+            {
+                await SendUserMessageAsync(chatId,
+                    "⚠️ برای صدور فاکتور، ابتدا باید در سامانه ثبت‌نام نموده یا وارد حساب کاربری خود شوید.",
+                    GetBackToMenuInlineKeyboard(),
+                    ct: ct);
+                return;
+            }
+
+            userState.CurrentStep = "InvWiz_BuyerType";
+            userState.StateDataJson = JsonSerializer.Serialize(new Dictionary<string, string>());
+            await _context.SaveChangesAsync(ct);
+
+            var prompt = "📄 <b>مرحله ۱ از ۵: انتخاب نوع خریدار و صورتحساب</b>\n\n" +
+                         $"🏢 <b>پروفایل صادرکننده:</b> {HtmlSafe(effectiveProfile.DisplayName)}\n" +
+                         $"🔑 <b>شناسه حافظه:</b> <code>{effectiveProfile.MemoryId ?? "-"}</code>\n\n" +
+                         "لطفاً نوع خریدار صورتحساب را انتخاب فرمایید:";
+
+            var buttons = new[]
+            {
+                new[] { new { text = "👤 مصرف‌کننده نهایی (نوع ۲ - الگوی اول)", callback_data = "inv_wiz_bt:consumer" } },
+                new[] { new { text = "🧑 شخص حقیقی با کد ملی (نوع ۱)", callback_data = "inv_wiz_bt:individual" } },
+                new[] { new { text = "🏢 شخص حقوقی / شرکت (نوع ۱)", callback_data = "inv_wiz_bt:legal" } },
+                new[] { new { text = "🔙 بازگشت به منوی اصلی", callback_data = "main_menu" } }
+            };
+
+            await SendUserMessageAsync(chatId, prompt, new { inline_keyboard = buttons }, ct: ct);
+        }
+
+        private async Task HandleBuyerTypeSelectedAsync(string chatId, BaleUserState userState, string buyerType, CancellationToken ct)
+        {
+            var data = string.IsNullOrWhiteSpace(userState.StateDataJson)
+                ? new Dictionary<string, string>()
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
+
+            data["BuyerType"] = buyerType;
+
+            if (buyerType == "consumer")
+            {
+                data["BuyerId"] = "";
+                userState.CurrentStep = "InvWiz_ItemSelect";
+                userState.StateDataJson = JsonSerializer.Serialize(data);
+                await _context.SaveChangesAsync(ct);
+
+                await ShowItemSelectMenuAsync(chatId, userState, ct);
+            }
+            else
+            {
+                userState.CurrentStep = "InvWiz_BuyerId";
+                userState.StateDataJson = JsonSerializer.Serialize(data);
+                await _context.SaveChangesAsync(ct);
+
+                var prompt = buyerType == "legal"
+                    ? "🏢 <b>مرحله ۲ از ۵: شناسه ملی شرکت / شخص حقوقی</b>\n\nلطفاً <b>شناسه ملی ۱۱ رقمی</b> خریدار حقوقی را وارد نمایید:"
+                    : "📝 <b>مرحله ۲ از ۵: کد ملی خریدار حقیقی</b>\n\nلطفاً <b>کد ملی ۱۰ رقمی</b> خریدار را وارد فرمایید:";
+
+                await SendUserMessageAsync(chatId, prompt, GetCancelReplyKeyboard(), ct: ct);
+            }
+        }
+
+        private async Task ShowItemSelectMenuAsync(string chatId, BaleUserState userState, CancellationToken ct)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+            if (user == null) return;
+
+            var favorites = await _context.UserFavoriteStuffs
+                .Include(f => f.Stuff)
+                .Where(f => f.Username == user.Username)
+                .OrderByDescending(f => f.AddedDate)
+                .Take(6)
+                .ToListAsync(ct);
+
+            var stuffCodes = favorites.Select(f => f.StuffCode).ToList();
+            var userProds = await _context.Products
+                .Where(p => p.Creator == user.Username && stuffCodes.Contains(p.Sstid))
+                .ToDictionaryAsync(p => p.Sstid, ct);
+
+            var buttons = new List<object[]>();
+
+            foreach (var f in favorites)
+            {
+                userProds.TryGetValue(f.StuffCode, out var prod);
+                var title = prod?.Sstt ?? f.Stuff?.Title ?? f.StuffCode;
+                if (title.Length > 24) title = title.Substring(0, 22) + "...";
+                var vat = f.Stuff != null ? $"{f.Stuff.VatRate}%" : (prod != null ? $"{(int)prod.Vra}%" : "10%");
+                buttons.Add(new[]
+                {
+                    new { text = $"📦 {title} ({vat})", callback_data = $"inv_wiz_item:{f.StuffCode}" }
+                });
+            }
+
+            buttons.Add(new[] { new { text = "🔍 جستجو یا ورود شناسه ۱۳ رقمی", callback_data = "inv_wiz_item_search_btn" } });
+            buttons.Add(new[] { new { text = "🔙 بازگشت", callback_data = "inv_wiz_back" }, new { text = "❌ انصراف", callback_data = "inv_wiz_cancel" } });
+
+            var msg = "📦 <b>مرحله ۳ از ۵: انتخاب کالا یا خدمت</b>\n\n" +
+                      "می‌توانید یکی از کالاهای منتخب زیر را با یک لمس انتخاب کنید یا از دکمه جستجو جهت یافتن سایر شناسه‌ها استفاده نمایید:";
+
+            await SendUserMessageAsync(chatId, msg, new { inline_keyboard = buttons.ToArray() }, ct: ct);
+        }
+
+        private async Task SelectItemByCodeAsync(string chatId, BaleUserState userState, string code, CancellationToken ct)
+        {
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+            if (user == null) return;
+
+            var cleanCode = ImportModel.NormalizeStuffCode(code) ?? code;
+            var stuff = await _context.Stuffs.FindAsync(new object[] { cleanCode }, ct);
+            var prod = await _context.Products.FirstOrDefaultAsync(p => p.Sstid == cleanCode && p.Creator == user.Username, ct);
+
+            var title = prod?.Sstt ?? stuff?.Title ?? cleanCode;
+            int vatRate = stuff?.VatRate ?? (prod != null ? (int)prod.Vra : 10);
+            long defaultFee = (long)(prod?.Fee ?? 0);
+            string mu = prod?.Mu ?? "162";
+
+            var data = string.IsNullOrWhiteSpace(userState.StateDataJson)
+                ? new Dictionary<string, string>()
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
+
+            data["ItemCode"] = cleanCode;
+            data["ItemTitle"] = title;
+            data["ItemVat"] = vatRate.ToString(CultureInfo.InvariantCulture);
+            data["DefaultFee"] = defaultFee.ToString(CultureInfo.InvariantCulture);
+            data["ItemMu"] = mu;
+
+            userState.CurrentStep = "InvWiz_Quantity";
+            userState.StateDataJson = JsonSerializer.Serialize(data);
+            await _context.SaveChangesAsync(ct);
+
+            var msg = $"📦 <b>کالای انتخابی:</b> {HtmlSafe(title)}\n" +
+                      $"شناسه: <code>{cleanCode}</code> | نرخ مالیات ارزش افزوده: <b>{vatRate}%</b>\n\n" +
+                      "🔢 لطفاً <b>تعداد یا مقدار</b> را به صورت عدد وارد فرمایید (مثال: <code>1</code> یا <code>2.5</code>):";
+
+            await SendUserMessageAsync(chatId, msg, GetCancelReplyKeyboard(), ct: ct);
+        }
+
+        private async Task ProcessItemSearchInputAsync(string chatId, BaleUserState userState, string? text, CancellationToken ct)
+        {
+            var clean = (text ?? "").Trim();
+            var cleanCode = ImportModel.NormalizeStuffCode(clean);
+
+            if (!string.IsNullOrWhiteSpace(cleanCode) && cleanCode.Length == 13 && cleanCode.All(char.IsDigit))
+            {
+                await SelectItemByCodeAsync(chatId, userState, cleanCode, ct);
+                return;
+            }
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+            var prodMatches = user != null
+                ? await _context.Products
+                    .Where(p => p.Creator == user.Username && (p.Sstid.Contains(clean) || (p.Sstt != null && p.Sstt.Contains(clean))))
+                    .Take(4)
+                    .ToListAsync(ct)
+                : new List<Product>();
+
+            var stuffMatches = await _context.Stuffs
+                .Where(s => s.Code.Contains(clean) || s.Title.Contains(clean))
+                .Take(6)
+                .ToListAsync(ct);
+
+            if (!prodMatches.Any() && !stuffMatches.Any())
+            {
+                await SendUserMessageAsync(chatId,
+                    "⚠️ موردی با این مشخصات یافت نشد.\nلطفاً شناسه ۱۳ رقمی را به صورت دقیق وارد فرمایید یا عبارت دیگری را جستجو نمایید:",
+                    GetCancelReplyKeyboard(),
+                    ct: ct);
+                return;
+            }
+
+            var buttons = new List<object[]>();
+            var seenCodes = new HashSet<string>();
+
+            foreach (var p in prodMatches)
+            {
+                if (string.IsNullOrWhiteSpace(p.Sstid) || seenCodes.Contains(p.Sstid)) continue;
+                seenCodes.Add(p.Sstid);
+                var title = p.Sstt ?? p.Sstid;
+                if (title.Length > 24) title = title.Substring(0, 22) + "...";
+                buttons.Add(new[]
+                {
+                    new { text = $"📦 {title} ({(int)p.Vra}%)", callback_data = $"inv_wiz_item:{p.Sstid}" }
+                });
+            }
+
+            foreach (var m in stuffMatches)
+            {
+                if (seenCodes.Contains(m.Code)) continue;
+                seenCodes.Add(m.Code);
+                var title = m.Title;
+                if (title.Length > 24) title = title.Substring(0, 22) + "...";
+                buttons.Add(new[]
+                {
+                    new { text = $"📦 {title} ({m.VatRate}%)", callback_data = $"inv_wiz_item:{m.Code}" }
+                });
+            }
+
+            buttons.Add(new[] { new { text = "🔙 بازگشت", callback_data = "inv_wiz_back" } });
+
+            await SendUserMessageAsync(chatId,
+                "🔍 <b>نتایج جستجوی کالا و خدمت:</b>\nجهت انتخاب روی کالا کلیک فرمایید:",
+                new { inline_keyboard = buttons.ToArray() },
+                ct: ct);
+        }
+
+        private async Task ShowFeePromptAsync(string chatId, BaleUserState userState, CancellationToken ct)
+        {
+            var data = string.IsNullOrWhiteSpace(userState.StateDataJson)
+                ? new Dictionary<string, string>()
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
+
+            var defaultFeeStr = data.TryGetValue("DefaultFee", out var df) ? df : "0";
+            long.TryParse(defaultFeeStr, NumberStyles.Any, CultureInfo.InvariantCulture, out var defaultFee);
+
+            var itemTitle = data.TryGetValue("ItemTitle", out var it) ? it : "-";
+            var am = data.TryGetValue("Am", out var a) ? a : "1";
+
+            var msg = $"📦 <b>کالا:</b> {HtmlSafe(itemTitle)} (تعداد: <b>{am}</b>)\n\n" +
+                      "💰 لطفاً <b>مبلغ واحد (فی)</b> را به ریال وارد نمایید (بدون کاما، مثال: <code>500000</code>):";
+
+            if (defaultFee > 0)
+            {
+                var buttons = new[]
+                {
+                    new[] { new { text = $"✅ تایید فی پیش‌فرض ({defaultFee:N0} ریال)", callback_data = $"inv_wiz_fee_default:{defaultFee}" } },
+                    new[] { new { text = "🔙 بازگشت", callback_data = "inv_wiz_back" } }
+                };
+                await SendUserMessageAsync(chatId, msg, new { inline_keyboard = buttons }, ct: ct);
+            }
+            else
+            {
+                await SendUserMessageAsync(chatId, msg, GetCancelReplyKeyboard(), ct: ct);
+            }
+        }
+
+        private async Task HandleDefaultFeeSelectedAsync(string chatId, BaleUserState userState, string feeVal, CancellationToken ct)
+        {
+            var data = string.IsNullOrWhiteSpace(userState.StateDataJson)
+                ? new Dictionary<string, string>()
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
+
+            data["Fee"] = feeVal;
+
+            if (data.TryGetValue("BuyerType", out var bt) && bt == "consumer")
+            {
+                data["CheckoutType"] = "1"; // نقدی
+                userState.CurrentStep = "InvWiz_Confirm";
+                userState.StateDataJson = JsonSerializer.Serialize(data);
+                await _context.SaveChangesAsync(ct);
+
+                await ShowInvoiceWizardConfirmCardAsync(chatId, userState, ct);
+            }
+            else
+            {
+                userState.CurrentStep = "InvWiz_CheckoutType";
+                userState.StateDataJson = JsonSerializer.Serialize(data);
+                await _context.SaveChangesAsync(ct);
+
+                await ShowCheckoutTypeMenuAsync(chatId, userState, ct);
+            }
+        }
+
+        private async Task ShowCheckoutTypeMenuAsync(string chatId, BaleUserState userState, CancellationToken ct)
+        {
+            var prompt = "💳 <b>مرحله ۴ از ۵: انتخاب روش تسویه حساب</b>\n\n" +
+                         "لطفاً نحوه پرداخت و تسویه صورتحساب را انتخاب فرمایید:";
+
+            var buttons = new[]
+            {
+                new[] { new { text = "💵 نقدی", callback_data = "inv_wiz_setm:1" } },
+                new[] { new { text = "📝 نسیه", callback_data = "inv_wiz_setm:2" } },
+                new[] { new { text = "💳 نقد و نسیه", callback_data = "inv_wiz_setm:3" } },
+                new[] { new { text = "🔙 بازگشت", callback_data = "inv_wiz_back" } }
+            };
+
+            await SendUserMessageAsync(chatId, prompt, new { inline_keyboard = buttons }, ct: ct);
+        }
+
+        private async Task HandleCheckoutTypeSelectedAsync(string chatId, BaleUserState userState, string checkoutType, CancellationToken ct)
+        {
+            var data = string.IsNullOrWhiteSpace(userState.StateDataJson)
+                ? new Dictionary<string, string>()
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
+
+            data["CheckoutType"] = checkoutType;
+            userState.CurrentStep = "InvWiz_Confirm";
+            userState.StateDataJson = JsonSerializer.Serialize(data);
+            await _context.SaveChangesAsync(ct);
+
+            await ShowInvoiceWizardConfirmCardAsync(chatId, userState, ct);
+        }
+
+        private async Task ShowInvoiceWizardConfirmCardAsync(string chatId, BaleUserState userState, CancellationToken ct)
+        {
+            var user = await _context.Users
+                .Include(u => u.Profile)
+                .FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+
+            var effectiveProfile = await GetEffectiveProfileAsync(user, userState, ct);
+            if (user == null || effectiveProfile == null) return;
+
+            var data = string.IsNullOrWhiteSpace(userState.StateDataJson)
+                ? new Dictionary<string, string>()
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
+
+            var buyerType = data.TryGetValue("BuyerType", out var bt) ? bt : "consumer";
+            var buyerId = data.TryGetValue("BuyerId", out var bi) ? bi : "-";
+            var itemTitle = data.TryGetValue("ItemTitle", out var it) ? it : "-";
+            var itemCode = data.TryGetValue("ItemCode", out var ic) ? ic : "-";
+
+            decimal.TryParse(data.TryGetValue("Am", out var aStr) ? aStr : "1", NumberStyles.Any, CultureInfo.InvariantCulture, out var am);
+            long.TryParse(data.TryGetValue("Fee", out var fStr) ? fStr : "0", NumberStyles.Any, CultureInfo.InvariantCulture, out var fee);
+            int.TryParse(data.TryGetValue("ItemVat", out var vStr) ? vStr : "10", NumberStyles.Any, CultureInfo.InvariantCulture, out var vatRate);
+            var setmStr = data.TryGetValue("CheckoutType", out var sStr) ? sStr : "1";
+
+            long subTotal = (long)(am * fee);
+            long vatAmount = (long)(subTotal * vatRate / 100.0);
+            long grandTotal = subTotal + vatAmount;
+
+            var buyerDesc = buyerType switch
+            {
+                "legal" => $"شخص حقوقی (شناسه ملی: <code>{buyerId}</code>)",
+                "individual" => $"شخص حقیقی (کد ملی: <code>{buyerId}</code>)",
+                _ => "مصرف‌کننده نهایی (نوع دوم)"
+            };
+
+            var setmDesc = setmStr switch
+            {
+                "2" => "نسیه",
+                "3" => "نقد و نسیه",
+                _ => "نقدی"
+            };
+
+            var isSubscribed = user.ExpireDate > DateTime.Now;
+            var perInvoiceCost = Utils.GetPerInvoiceCost(user, _context);
+            var costDesc = isSubscribed ? "🎁 رایگان (اشتراک فعال)" : $"{perInvoiceCost:N0} ریال";
+
+            var card = "📋 <b>مرحله ۵ از ۵: پیش‌نمایش و تایید نهایی صورتحساب</b>\n\n" +
+                       $"🏢 <b>صادرکننده:</b> {HtmlSafe(effectiveProfile.DisplayName)}\n" +
+                       $"👤 <b>خریدار:</b> {buyerDesc}\n" +
+                       $"📦 <b>کالا/خدمت:</b> {HtmlSafe(itemTitle)}\n" +
+                       $"🔢 <b>تعداد/مقدار:</b> <b>{am}</b> | <b>فی:</b> <b>{fee:N0} ریال</b>\n" +
+                       $"💵 <b>مبلغ کل کالا:</b> {subTotal:N0} ریال\n" +
+                       $"📊 <b>مالیات ارزش افزوده ({vatRate}%):</b> {vatAmount:N0} ریال\n" +
+                       $"💎 <b>مبلغ قابل پرداخت:</b> <b>{grandTotal:N0} ریال</b>\n" +
+                       $"💳 <b>روش تسویه:</b> {setmDesc}\n" +
+                       $"🏷️ <b>هزینه ارسال:</b> {costDesc}\n\n" +
+                       "جهت امضا و ارسال مستقیم به سامانه مودیان، دکمه تایید را لمس نمایید:";
+
+            var buttons = new[]
+            {
+                new[] { new { text = "🚀 تایید و ارسال به سامانه مودیان", callback_data = "inv_wiz_send" } },
+                new[] { new { text = "🔙 ویرایش و بازگشت", callback_data = "inv_wiz_back" } },
+                new[] { new { text = "❌ انصراف", callback_data = "inv_wiz_cancel" } }
+            };
+
+            await SendUserMessageAsync(chatId, card, new { inline_keyboard = buttons }, ct: ct);
+        }
+
+        private async Task SendSingleInvoiceWizardAsync(string chatId, BaleUserState userState, CancellationToken ct)
+        {
+            var user = await _context.Users
+                .Include(u => u.Profile)
+                .FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+
+            var effectiveProfile = await GetEffectiveProfileAsync(user, userState, ct);
+            if (user == null || effectiveProfile == null)
+            {
+                await SendUserMessageAsync(chatId, "⚠️ دسترسی نامعتبر است.", ct: ct);
+                return;
+            }
+
+            var data = string.IsNullOrWhiteSpace(userState.StateDataJson)
+                ? new Dictionary<string, string>()
+                : JsonSerializer.Deserialize<Dictionary<string, string>>(userState.StateDataJson) ?? new Dictionary<string, string>();
+
+            var buyerType = data.TryGetValue("BuyerType", out var bt) ? bt : "consumer";
+            var buyerId = data.TryGetValue("BuyerId", out var bi) ? bi : null;
+            var itemTitle = data.TryGetValue("ItemTitle", out var it) ? it : "-";
+            var itemCode = data.TryGetValue("ItemCode", out var ic) ? ic : "-";
+            var mu = data.TryGetValue("ItemMu", out var m) ? m : "162";
+
+            decimal.TryParse(data.TryGetValue("Am", out var aStr) ? aStr : "1", NumberStyles.Any, CultureInfo.InvariantCulture, out var am);
+            long.TryParse(data.TryGetValue("Fee", out var fStr) ? fStr : "0", NumberStyles.Any, CultureInfo.InvariantCulture, out var fee);
+            int.TryParse(data.TryGetValue("ItemVat", out var vStr) ? vStr : "10", NumberStyles.Any, CultureInfo.InvariantCulture, out var vatRate);
+            var setmStr = data.TryGetValue("CheckoutType", out var sStr) ? sStr : "1";
+
+            var isSubscribed = user.ExpireDate > DateTime.Now;
+            var perInvoiceCost = Utils.GetPerInvoiceCost(user, _context);
+
+            if (!isSubscribed && user.Vallet < perInvoiceCost)
+            {
+                await SendUserMessageAsync(chatId,
+                    $"⚠️ موجودی کیف پول شما جهت ارسال این فاکتور کافی نیست.\n" +
+                    $"• هزینه فاکتور: <b>{perInvoiceCost:N0} ریال</b>\n" +
+                    $"• موجودی شما: <b>{user.Vallet:N0} ریال</b>\n\n" +
+                    "لطفاً از طریق گزینه «💰 کیف پول و موجودی» حساب خود را شارژ فرمایید.",
+                    GetBackToMenuInlineKeyboard(),
+                    ct: ct);
+                return;
+            }
+
+            await SendUserMessageAsync(chatId, "⏳ در حال امضای الکترونیکی و ارسال فاکتور به سامانه مودیان...", ct: ct);
+
+            var vra = VatRate.درصد_10;
+            if (vatRate == 0) vra = VatRate.معاف;
+            else if (vatRate == 9) vra = VatRate.درصد_9;
+            else if (vatRate == 10) vra = VatRate.درصد_10;
+            else if (vatRate == 16) vra = VatRate.درصد_16;
+
+            var setm = setmStr switch
+            {
+                "2" => CheckoutType.نسیه,
+                "3" => CheckoutType.نقد_نسیه,
+                _ => CheckoutType.نقدی
+            };
+
+            PersonType? tob = buyerType switch
+            {
+                "legal" => PersonType.حقوقی,
+                "individual" => PersonType.حقیقی,
+                _ => null
+            };
+
+            var nowPersian = MyDate.GetPersianDate(DateTime.Now)?.ToShortDateString() ?? DateTime.Now.ToString("yyyy/MM/dd");
+            var invoice = new Invoices.Models.Invoice
+            {
+                Sender = user.Username,
+                Ins = InvoiceTopic.اصلی,
+                Inty = buyerType == "consumer" ? InvoiceType.نوع_دوم : InvoiceType.نوع_اول,
+                Inp = InvoicePattern.فروش,
+                InvoiceDate = nowPersian,
+                Tob = tob,
+                Tinb = Utils.ConvertPersianNumberToEnglish(buyerId),
+                Setm = setm,
+                Draft = false,
+                Status = InvoiceStatus.در_حال_ارسال,
+                ProfileId = effectiveProfile.Id,
+                Tins = effectiveProfile.TinCode,
+                Indatim = DateTime.Now
+            };
+
+            invoice.InvoiceItems.Add(new InvoiceItem
+            {
+                Sstid = itemCode,
+                Sstt = itemTitle,
+                Am = am,
+                Fee = fee,
+                Dis = 0,
+                Vra = vra,
+                Mu = mu
+            });
+
+            _context.Invoices.Add(invoice);
+            await _context.SaveChangesAsync(ct);
+
+            try
+            {
+                var response = _invoiceSender.SendInvoice(invoice);
+                invoice.Status = response.Status;
+                invoice.ReferenceCode = response.RefId;
+                invoice.ResponseMessage = response.Response;
+                invoice.UID = response.UID;
+                invoice.Taxid = response.TaxId;
+                invoice.SendDate = DateTime.Now;
+
+                if (response.Status == InvoiceStatus.موفق)
+                {
+                    if (!isSubscribed)
+                    {
+                        user.Vallet -= perInvoiceCost;
+                        user.InvoiceSent = true;
+                    }
+
+                    await _context.SaveChangesAsync(ct);
+                    await _activityLogger.LogInvoiceActionAsync("ارسال فاکتور از بله", invoice.Id, invoice.Taxid, $"صدور موفق فاکتور تکی در ربات بله توسط {user.Username}");
+
+                    userState.CurrentStep = "None";
+                    userState.StateDataJson = null;
+                    await _context.SaveChangesAsync(ct);
+
+                    var successMsg = "🎉 <b>صورتحساب شما با موفقیت به سامانه مودیان ارسال شد!</b>\n\n" +
+                                     $"• شماره منحصر به فرد مالیاتی (TaxID):\n<code>{invoice.Taxid}</code>\n\n" +
+                                     $"• کد رهگیری استعلام: <code>{invoice.ReferenceCode ?? invoice.UID ?? "-"}</code>\n" +
+                                     $"• مبلغ کل صورتحساب: <b>{(am * fee) + ((am * fee) * vatRate / 100):N0} ریال</b>\n" +
+                                     $"• موجودی فعلی کیف پول: <b>{user.Vallet:N0} ریال</b>";
+
+                    await SendUserMessageAsync(chatId, successMsg, ct: ct);
+                    await ShowMainMenuAsync(chatId, ct);
+                }
+                else
+                {
+                    await _context.SaveChangesAsync(ct);
+                    var errMsg = $"❌ <b>خطا در ارسال صورتحساب به سامانه مودیان</b>\n\n" +
+                                 $"علت خطا: {HtmlSafe(response.Response ?? "خطای ارتباط با سرور امور مالیاتی")}\n\n" +
+                                 "مبلغی از کیف پول شما کسر نگردید. فاکتور به عنوان پیش‌نویس در پنل وب شما ذخیره شد.";
+                    await SendUserMessageAsync(chatId, errMsg, ct: ct);
+                    await ShowMainMenuAsync(chatId, ct);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "استثنا در ارسال فاکتور تکی ویزارد به مودیان");
+                invoice.Status = InvoiceStatus.خطا_در_ارسال;
+                await _context.SaveChangesAsync(ct);
+
+                await SendUserMessageAsync(chatId, "❌ خطا در برقراری ارتباط با سامانه مودیان: " + ex.Message, ct: ct);
+                await ShowMainMenuAsync(chatId, ct);
+            }
+        }
+
+        private async Task ShowCancelInvoiceConfirmAsync(string chatId, int invId, CancellationToken ct)
+        {
+            var invoice = await _context.Invoices
+                .Include(i => i.InvoiceItems)
+                .Include(i => i.Profile)
+                .FirstOrDefaultAsync(i => i.Id == invId, ct);
+
+            if (invoice == null || string.IsNullOrWhiteSpace(invoice.Taxid))
+            {
+                await SendUserMessageAsync(chatId, "⚠️ فاکتور مورد نظر یافت نشد یا شماره مالیاتی ندارد.", ct: ct);
+                return;
+            }
+
+            var sumTotal = invoice.InvoiceItems.Sum(item => (long)(item.Am * item.Fee));
+
+            var card = "⚠️ <b>تایید نهایی ابطال صورتحساب الکترونیکی</b>\n\n" +
+                       $"• شماره منحصر به فرد مالیاتی:\n<code>{invoice.Taxid}</code>\n\n" +
+                       $"• تاریخ فاکتور: <b>{invoice.InvoiceDate ?? "-"}</b>\n" +
+                       $"• مجموع مبلغ: <b>{sumTotal:N0} ریال</b>\n" +
+                       $"• خریدار: {HtmlSafe(invoice.Tinb ?? "مصرف‌کننده نهایی")}\n\n" +
+                       "📌 <i>نکته: فرآیند ابطال فاکتور کاملاً رایگان است و هیچ هزینه‌ای از کیف پول شما کسر نخواهد شد.</i>\n\n" +
+                       "آیا از ابطال این صورتحساب اطمینان دارید؟";
+
+            var buttons = new[]
+            {
+                new[] { new { text = "❌ تایید نهایی ابطال فاکتور", callback_data = $"inv_cancel_confirm:{invoice.Id}" } },
+                new[] { new { text = "🔙 انصراف و بازگشت", callback_data = "main_menu" } }
+            };
+
+            await SendUserMessageAsync(chatId, card, new { inline_keyboard = buttons }, ct: ct);
+        }
+
+        private async Task ShowCancelTaxIdConfirmAsync(string chatId, string taxId, CancellationToken ct)
+        {
+            var invoice = await _context.Invoices.FirstOrDefaultAsync(i => i.Taxid == taxId, ct);
+
+            var card = "⚠️ <b>تایید نهایی ابطال با شناسه مالیاتی</b>\n\n" +
+                       $"• شماره مالیاتی مرجع جهت ابطال:\n<code>{taxId}</code>\n\n" +
+                       (invoice != null ? $"• تاریخ ثبت اولیه: <b>{invoice.InvoiceDate ?? "-"}</b>\n" : "") +
+                       "📌 <i>نکته: فرآیند ابطال فاکتور کاملاً رایگان است و هیچ هزینه‌ای از کیف پول کسر نمی‌گردد.</i>\n\n" +
+                       "آیا مایل به ارسال صورتحساب ابطالی برای این شماره به سامانه مودیان هستید؟";
+
+            var buttons = new[]
+            {
+                new[] { new { text = "❌ تایید نهایی ابطال فاکتور", callback_data = $"inv_cancel_taxid_confirm:{taxId}" } },
+                new[] { new { text = "🔙 انصراف و بازگشت", callback_data = "main_menu" } }
+            };
+
+            await SendUserMessageAsync(chatId, card, new { inline_keyboard = buttons }, ct: ct);
+        }
+
+        private async Task ExecuteInvoiceCancellationAsync(string chatId, int? invoiceId, string? manualTaxId, CancellationToken ct)
+        {
+            var user = await _context.Users
+                .Include(u => u.Profile)
+                .FirstOrDefaultAsync(u => u.BaleChatId == chatId, ct);
+
+            var effectiveProfile = await GetEffectiveProfileAsync(user, chatId, ct);
+            if (user == null || effectiveProfile == null)
+            {
+                await SendUserMessageAsync(chatId, "⚠️ دسترسی نامعتبر است.", ct: ct);
+                return;
+            }
+
+            Invoices.Models.Invoice? refInvoice = null;
+            string targetTaxId = "";
+
+            if (invoiceId.HasValue)
+            {
+                refInvoice = await _context.Invoices.FindAsync(new object[] { invoiceId.Value }, ct);
+                if (refInvoice != null) targetTaxId = refInvoice.Taxid ?? "";
+            }
+            else if (!string.IsNullOrWhiteSpace(manualTaxId))
+            {
+                targetTaxId = manualTaxId.Trim().ToUpperInvariant();
+                refInvoice = await _context.Invoices.FirstOrDefaultAsync(i => i.Taxid == targetTaxId, ct);
+            }
+
+            if (string.IsNullOrWhiteSpace(targetTaxId))
+            {
+                await SendUserMessageAsync(chatId, "⚠️ شناسه مالیاتی فاکتور مرجع مشخص نشده است.", ct: ct);
+                return;
+            }
+
+            await SendUserMessageAsync(chatId, "⏳ در حال صدور و ارسال صورتحساب ابطالی به سامانه مودیان...", ct: ct);
+
+            var cancelProfId = refInvoice?.ProfileId ?? effectiveProfile.Id;
+            var cancelTins = (!string.IsNullOrWhiteSpace(refInvoice?.Tins) ? refInvoice.Tins : effectiveProfile.TinCode);
+
+            var cancelInvoice = new Invoices.Models.Invoice
+            {
+                Ins = InvoiceTopic.ابطالی,
+                Irtaxid = targetTaxId,
+                Tins = cancelTins,
+                Sender = user.Username,
+                Indatim = DateTime.Now,
+                ProfileId = cancelProfId,
+                InvoiceDate = MyDate.GetPersianDate(DateTime.Now)?.ToShortDateString() ?? DateTime.Now.ToString("yyyy/MM/dd"),
+                Status = InvoiceStatus.در_حال_ارسال,
+                Draft = false
+            };
+
+            _context.Invoices.Add(cancelInvoice);
+            await _context.SaveChangesAsync(ct);
+
+            try
+            {
+                var response = _invoiceSender.SendInvoice(cancelInvoice);
+                cancelInvoice.Status = response.Status;
+                cancelInvoice.ReferenceCode = response.RefId;
+                cancelInvoice.ResponseMessage = response.Response;
+                cancelInvoice.UID = response.UID;
+                cancelInvoice.Taxid = response.TaxId;
+                cancelInvoice.SendDate = DateTime.Now;
+
+                if (response.Status == InvoiceStatus.موفق)
+                {
+                    if (refInvoice != null)
+                    {
+                        refInvoice.Status = InvoiceStatus.ابطال_شده;
+                        refInvoice.ReferalId = cancelInvoice.Id;
+                    }
+
+                    await _context.SaveChangesAsync(ct);
+                    await _activityLogger.LogInvoiceActionAsync("ابطال فاکتور از بله", cancelInvoice.Id, cancelInvoice.Taxid, $"ابطال فاکتور مرجع {targetTaxId} توسط {user.Username} در بله");
+
+                    var successMsg = "🎉 <b>صورتحساب ابطالی با موفقیت در سامانه مودیان ثبت گردید!</b>\n\n" +
+                                     $"• شناسه مالیاتی ابطالی:\n<code>{cancelInvoice.Taxid}</code>\n\n" +
+                                     $"• کد رهگیری: <code>{cancelInvoice.ReferenceCode ?? cancelInvoice.UID ?? "-"}</code>\n" +
+                                     $"• فاکتور مرجع: <code>{targetTaxId}</code>\n" +
+                                     $"• وضعیت فاکتور مرجع: <b>ابطال‌شده</b>\n" +
+                                     "• هزینه کسرشده: <b>۰ ریال (رایگان)</b>";
+
+                    await SendUserMessageAsync(chatId, successMsg, ct: ct);
+                    await ShowMainMenuAsync(chatId, ct);
+                }
+                else
+                {
+                    await _context.SaveChangesAsync(ct);
+                    var errMsg = $"❌ <b>خطا در ابطال صورتحساب</b>\n\n" +
+                                 $"علت خطا: {HtmlSafe(response.Response ?? "پاسخ ناموفق از سامانه مودیان")}\n\n" +
+                                 "لطفاً از صحت شماره مالیاتی اطمینان حاصل کرده و مجدداً تلاش فرمایید.";
+                    await SendUserMessageAsync(chatId, errMsg, ct: ct);
+                    await ShowMainMenuAsync(chatId, ct);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "استثنا در ارسال صورتحساب ابطالی به مودیان");
+                cancelInvoice.Status = InvoiceStatus.خطا_در_ارسال;
+                await _context.SaveChangesAsync(ct);
+
+                await SendUserMessageAsync(chatId, "❌ خطا در ارسال فاکتور ابطالی: " + ex.Message, ct: ct);
+                await ShowMainMenuAsync(chatId, ct);
+            }
+        }
+
+        #endregion
     }
 }

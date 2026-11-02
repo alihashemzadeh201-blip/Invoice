@@ -166,10 +166,38 @@ namespace Invoices.Pages.InvoiceManage
 
             search = (search ?? "").Trim();
 
-            // فیلتر اختصاصی بر اساس کالاهای منتخب کاربر (UserFavoriteStuffs)
+            // تشخیص تمامی نام‌های کاربری مرتبط با پروفایل کاربر/نماینده
+            var effectiveUsernames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { username };
+            var currentUser = await _context.Users.FirstOrDefaultAsync(u => u.Username == username);
+            if (currentUser?.ProfileId != null)
+            {
+                var profile = await _context.Profiles.FindAsync(currentUser.ProfileId.Value);
+                if (profile != null && !string.IsNullOrWhiteSpace(profile.Creator))
+                {
+                    effectiveUsernames.Add(profile.Creator);
+                }
+
+                var siblingUsers = await _context.Users
+                    .Where(u => u.ProfileId == currentUser.ProfileId.Value)
+                    .Select(u => u.Username)
+                    .ToListAsync();
+                foreach (var su in siblingUsers)
+                {
+                    if (!string.IsNullOrWhiteSpace(su)) effectiveUsernames.Add(su);
+                }
+            }
+
+            // ۱. دریافت کالاهای ذخیره‌شده در Products مربوط به کاربر
+            var userProductsList = await _context.Products
+                .Include(p => p.MeasureUnit)
+                .Where(p => effectiveUsernames.Contains(p.Creator))
+                .AsNoTracking()
+                .ToListAsync();
+
+            // ۲. دریافت کالاهای منتخب کاربر از UserFavoriteStuffs
             var favQuery = _context.UserFavoriteStuffs
                 .Include(f => f.Stuff)
-                .Where(f => f.Username == username)
+                .Where(f => effectiveUsernames.Contains(f.Username))
                 .AsNoTracking();
 
             if (!string.IsNullOrWhiteSpace(search))
@@ -181,28 +209,22 @@ namespace Invoices.Pages.InvoiceManage
 
             var favorites = await favQuery
                 .OrderByDescending(f => f.AddedDate)
-                .Take(50)
                 .ToListAsync();
 
-            // استخراج کدهای منتخب جهت یافتن پیش‌فرض‌های احتمالی کاربر در Products (فی و واحد سنجش)
-            var favoriteCodes = favorites.Select(f => f.StuffCode).ToList();
-            var userProducts = await _context.Products
-                .Where(p => p.Creator == username && favoriteCodes.Contains(p.Sstid))
-                .AsNoTracking()
-                .ToDictionaryAsync(p => p.Sstid, p => p, StringComparer.OrdinalIgnoreCase);
+            var combined = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
-            var result = favorites.Select(f =>
+            // اضافه کردن کالاهای منتخب
+            foreach (var f in favorites)
             {
                 var code = f.StuffCode;
                 var stuff = f.Stuff;
-                userProducts.TryGetValue(code, out var prod);
+                var prod = userProductsList.FirstOrDefault(p => string.Equals(p.Sstid, code, StringComparison.OrdinalIgnoreCase));
 
-                var title = stuff?.Title ?? prod?.Sstt ?? code;
+                var title = prod?.Sstt ?? stuff?.Title ?? code;
                 var stuffType = stuff != null
                     ? stuff.Type.ToString().Replace("_", " ")
                     : (prod?.StuffType.ToString().Replace("_", " ") ?? "");
 
-                // تعیین نرخ مالیات (به صورت انوم یا مقدار عددی درصد)
                 VatRate vra = VatRate.درصد_10;
                 int vatPercent = 10;
                 if (stuff != null)
@@ -225,7 +247,7 @@ namespace Invoices.Pages.InvoiceManage
                     vatPercent = (int)prod.Vra;
                 }
 
-                return new
+                combined[code] = new
                 {
                     id = prod?.Id ?? 0,
                     sstid = code,
@@ -236,9 +258,42 @@ namespace Invoices.Pages.InvoiceManage
                     mu = prod?.Mu ?? "",
                     fee = prod?.Fee ?? 0
                 };
-            }).ToList();
+            }
 
-            return new JsonResult(result);
+            // اضافه کردن کالاهایی که از قبل در Products ثبت شده بودند اما در UserFavoriteStuffs نیستند
+            foreach (var prod in userProductsList)
+            {
+                if (string.IsNullOrWhiteSpace(prod.Sstid) || combined.ContainsKey(prod.Sstid))
+                    continue;
+
+                if (!string.IsNullOrWhiteSpace(search) &&
+                    !prod.Sstid.Contains(search, StringComparison.OrdinalIgnoreCase) &&
+                    (prod.Sstt == null || !prod.Sstt.Contains(search, StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
+
+                var stuffType = prod.StuffType.ToString().Replace("_", " ");
+                int vatPercent = (int)prod.Vra;
+                if (prod.Vra == VatRate.معاف) vatPercent = 0;
+                else if (prod.Vra == VatRate.درصد_9) vatPercent = 9;
+                else if (prod.Vra == VatRate.درصد_10) vatPercent = 10;
+                else if (prod.Vra == VatRate.درصد_16) vatPercent = 16;
+
+                combined[prod.Sstid] = new
+                {
+                    id = prod.Id,
+                    sstid = prod.Sstid,
+                    sstt = prod.Sstt ?? prod.Sstid,
+                    title = $"{prod.Sstt ?? prod.Sstid} -- {stuffType} -- {prod.Sstid}",
+                    vra = (int)prod.Vra,
+                    vatRatePercent = vatPercent,
+                    mu = prod.Mu ?? "",
+                    fee = prod.Fee ?? 0
+                };
+            }
+
+            return new JsonResult(combined.Values.Take(50).ToList());
         }
 
 

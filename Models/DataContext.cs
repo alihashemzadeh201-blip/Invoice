@@ -52,6 +52,7 @@ namespace Invoices.Models
             modelBuilder.Entity<UserFavoriteStuff>(e =>
             {
                 e.HasIndex(x => new { x.Username, x.StuffCode }).IsUnique();
+                e.HasOne(x => x.Stuff).WithMany().HasForeignKey(x => x.StuffCode).IsRequired(false);
             });
             //modelBuilder.Entity<Profile>(e => e.HasIndex(s => s.TinCode).IsUnique());
             //modelBuilder.Entity<Stuff>(e => e.HasMany(p => p.InvoiceItems).WithOne(e => e.Stuff).HasForeignKey(e => e.Sstid).HasPrincipalKey(e => e.Code));
