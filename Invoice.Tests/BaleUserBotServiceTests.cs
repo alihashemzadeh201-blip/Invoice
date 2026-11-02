@@ -973,7 +973,7 @@ namespace Invoice.Tests
         }
 
         [Fact]
-        public async Task ProcessUpdateAsync_InvWizard_BuyerTypeConsumer_TransitionsToItemSelect()
+        public async Task ProcessUpdateAsync_InvWizard_BuyerTypeConsumer_TransitionsThroughDateAndPatternToItemSelect()
         {
             var chatId = "44556677";
             var profile = new Profile { FirstName = "فروشگاه نمونه", TinCode = "14009988776", MemoryId = "MEM02" };
@@ -999,7 +999,8 @@ namespace Invoice.Tests
             _context.BaleUserStates.Add(state);
             await _context.SaveChangesAsync();
 
-            var update = ParseJson($@"{{
+            // ۱. انتخاب مصرف‌کننده نهایی -> انتقال به دریافت تاریخ فاکتور
+            var updateConsumer = ParseJson($@"{{
                 ""callback_query"": {{
                     ""id"": ""cb_wiz_consumer"",
                     ""from"": {{ ""id"": {chatId}, ""username"": ""wiz_consumer_user"" }},
@@ -1008,15 +1009,243 @@ namespace Invoice.Tests
                 }}
             }}");
 
-            await _service.ProcessUpdateAsync(update);
+            await _service.ProcessUpdateAsync(updateConsumer);
 
-            var updatedState = await _context.BaleUserStates.FindAsync(chatId);
-            Assert.NotNull(updatedState);
-            Assert.Equal("InvWiz_ItemSelect", updatedState.CurrentStep);
+            var stateDate = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(stateDate);
+            Assert.Equal("InvWiz_Date", stateDate.CurrentStep);
+
+            var dateMsg = GetLastMessageText();
+            Assert.NotNull(dateMsg);
+            Assert.Contains("تاریخ صورتحساب", dateMsg);
+            Assert.Contains("inv_wiz_date_today", _httpHandler.RequestBodies[^1]);
+
+            // ۲. انتخاب تاریخ امروز -> انتقال به انتخاب الگوی صورتحساب
+            var updateDate = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_wiz_date"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""wiz_consumer_user"" }},
+                    ""message"": {{ ""message_id"": 112, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_wiz_date_today""
+                }}
+            }}");
+
+            await _service.ProcessUpdateAsync(updateDate);
+
+            var statePattern = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(statePattern);
+            Assert.Equal("InvWiz_Pattern", statePattern.CurrentStep);
+
+            var patternMsg = GetLastMessageText();
+            Assert.NotNull(patternMsg);
+            Assert.Contains("الگوی صورتحساب", patternMsg);
+            Assert.Contains("inv_wiz_pattern:1", _httpHandler.RequestBodies[^1]);
+
+            // ۳. انتخاب الگوی اول (فروش) -> انتقال به انتخاب کالا یا خدمت
+            var updatePattern = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_wiz_pattern"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""wiz_consumer_user"" }},
+                    ""message"": {{ ""message_id"": 113, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_wiz_pattern:1""
+                }}
+            }}");
+
+            await _service.ProcessUpdateAsync(updatePattern);
+
+            var stateItem = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(stateItem);
+            Assert.Equal("InvWiz_ItemSelect", stateItem.CurrentStep);
+
+            var itemMsg = GetLastMessageText();
+            Assert.NotNull(itemMsg);
+            Assert.Contains("انتخاب کالا یا خدمت", itemMsg);
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_InvWizard_BuyerTypeLegal_SetsBidAndTinb_And_SkipsTinPrompt()
+        {
+            var chatId = "44556688";
+            var profile = new Profile { FirstName = "شرکت پایا", TinCode = "14001122334", MemoryId = "MEM03" };
+            _context.Profiles.Add(profile);
+            await _context.SaveChangesAsync();
+
+            var user = new User
+            {
+                Username = "wiz_legal_user",
+                Role = "user",
+                BaleChatId = chatId,
+                ProfileId = profile.Id
+            };
+            _context.Users.Add(user);
+
+            var state = new BaleUserState
+            {
+                ChatId = chatId,
+                CurrentStep = "InvWiz_BuyerType",
+                Username = user.Username,
+                LastUpdated = DateTime.Now
+            };
+            _context.BaleUserStates.Add(state);
+            await _context.SaveChangesAsync();
+
+            // ۱. انتخاب خریدار حقوقی -> درخواست شناسه ملی ۱۱ رقمی
+            var cbLegal = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_wiz_legal"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""wiz_legal_user"" }},
+                    ""message"": {{ ""message_id"": 121, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_wiz_bt:legal""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(cbLegal);
+
+            var stateBuyerId = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(stateBuyerId);
+            Assert.Equal("InvWiz_BuyerId", stateBuyerId.CurrentStep);
+
+            // ۲. ارسال شناسه ملی ۱۱ رقمی -> برای حقوقی، شماره اقتصادی همان شناسه ملی است و مستقیم به مرحله تاریخ می‌رود
+            var msgBuyerId = ParseJson($@"{{
+                ""message"": {{
+                    ""message_id"": 122,
+                    ""chat"": {{ ""id"": {chatId} }},
+                    ""text"": ""۱۴۰۰۸۸۹۹۰۰۱""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(msgBuyerId);
+
+            var stateAfterId = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(stateAfterId);
+            Assert.Equal("InvWiz_Date", stateAfterId.CurrentStep);
+
+            // بررسی ذخیره شدن Bid و Tinb برابر با شناسه ملی
+            Assert.NotNull(stateAfterId.StateDataJson);
+            var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(stateAfterId.StateDataJson);
+            Assert.NotNull(data);
+            Assert.Equal("14008899001", data["BuyerId"]);
+            Assert.Equal("14008899001", data["BuyerTin"]);
 
             var lastMsg = GetLastMessageText();
             Assert.NotNull(lastMsg);
-            Assert.Contains("مرحله ۳ از ۵: انتخاب کالا یا خدمت", lastMsg);
+            Assert.Contains("تاریخ صورتحساب", lastMsg);
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_InvWizard_BuyerTypeIndividual_AsksForBuyerTin_WithSameIdOption()
+        {
+            var chatId = "44556699";
+            var profile = new Profile { FirstName = "فروشگاه انصاری", TinCode = "14005566778", MemoryId = "MEM04" };
+            _context.Profiles.Add(profile);
+            await _context.SaveChangesAsync();
+
+            var user = new User
+            {
+                Username = "wiz_indiv_user",
+                Role = "user",
+                BaleChatId = chatId,
+                ProfileId = profile.Id
+            };
+            _context.Users.Add(user);
+
+            var state = new BaleUserState
+            {
+                ChatId = chatId,
+                CurrentStep = "InvWiz_BuyerType",
+                Username = user.Username,
+                LastUpdated = DateTime.Now
+            };
+            _context.BaleUserStates.Add(state);
+            await _context.SaveChangesAsync();
+
+            // ۱. انتخاب خریدار حقیقی -> درخواست کد ملی ۱۰ رقمی
+            var cbIndiv = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_wiz_indiv"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""wiz_indiv_user"" }},
+                    ""message"": {{ ""message_id"": 131, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_wiz_bt:individual""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(cbIndiv);
+
+            var stateBuyerId = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(stateBuyerId);
+            Assert.Equal("InvWiz_BuyerId", stateBuyerId.CurrentStep);
+
+            // ۲. ارسال کد ملی ۱۰ رقمی -> برای شخص حقیقی، سیستم باید شماره اقتصادی را بپرسد
+            var msgBuyerId = ParseJson($@"{{
+                ""message"": {{
+                    ""message_id"": 132,
+                    ""chat"": {{ ""id"": {chatId} }},
+                    ""text"": ""۰۰۱۲۳۴۵۶۷۸""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(msgBuyerId);
+
+            var stateTin = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(stateTin);
+            Assert.Equal("InvWiz_BuyerTin", stateTin.CurrentStep);
+
+            var tinMsg = GetLastMessageText();
+            Assert.NotNull(tinMsg);
+            Assert.Contains("شماره اقتصادی خریدار", tinMsg);
+            Assert.Contains("inv_wiz_tin_same", _httpHandler.RequestBodies[^1]);
+
+            // ۳. انتخاب «همان کد ملی» -> تنظیم Tinb و انتقال به مرحله تاریخ
+            var cbTinSame = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_wiz_tin_same"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""wiz_indiv_user"" }},
+                    ""message"": {{ ""message_id"": 133, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_wiz_tin_same""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(cbTinSame);
+
+            var stateAfterTin = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(stateAfterTin);
+            Assert.Equal("InvWiz_Date", stateAfterTin.CurrentStep);
+
+            Assert.NotNull(stateAfterTin.StateDataJson);
+            var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(stateAfterTin.StateDataJson);
+            Assert.NotNull(data);
+            Assert.Equal("0012345678", data["BuyerId"]);
+            Assert.Equal("0012345678", data["BuyerTin"]);
+
+            // ۴. ارسال تاریخ شمسی دلخواه دستی در چت
+            var msgCustomDate = ParseJson($@"{{
+                ""message"": {{
+                    ""message_id"": 134,
+                    ""chat"": {{ ""id"": {chatId} }},
+                    ""text"": ""۱۴۰۳/۰۸/۱۵""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(msgCustomDate);
+
+            var statePattern = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(statePattern);
+            Assert.Equal("InvWiz_Pattern", statePattern.CurrentStep);
+
+            var dataAfterDate = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(statePattern.StateDataJson!);
+            Assert.Equal("1403/08/15", dataAfterDate!["InvoiceDate"]);
+
+            // ۵. انتخاب الگوی قرارداد پیمانکاری (الگوی ۴)
+            var cbPattern = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_wiz_pat_4"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""wiz_indiv_user"" }},
+                    ""message"": {{ ""message_id"": 135, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_wiz_pattern:4""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(cbPattern);
+
+            var stateItem = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(stateItem);
+            Assert.Equal("InvWiz_ItemSelect", stateItem.CurrentStep);
+
+            var dataAfterPat = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(stateItem.StateDataJson!);
+            Assert.Equal("4", dataAfterPat!["InvoicePattern"]);
         }
 
         [Fact]
@@ -1260,6 +1489,452 @@ namespace Invoice.Tests
             var updatedUser = await _context.Users.FindAsync(user.Username);
             Assert.NotNull(updatedUser);
             Assert.Equal(prof1.Id, updatedUser.ProfileId);
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_LogoutFlow_ShowsConfirmation_Cancels_And_ConfirmsLogout()
+        {
+            var chatId = "889977";
+            var prof = new Profile { FirstName = "کاربر خروج", Lastname = "تستی", MemoryId = "MEM_LOGOUT_1" };
+            _context.Profiles.Add(prof);
+            await _context.SaveChangesAsync();
+
+            var user = new User
+            {
+                Username = "logout_test_user",
+                BaleChatId = chatId,
+                ProfileId = prof.Id,
+                Profile = prof
+            };
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            // ۱. کاربر درخواست خروج می‌دهد
+            var msgLogout = ParseJson($@"{{
+                ""message"": {{
+                    ""message_id"": 201,
+                    ""chat"": {{ ""id"": {chatId} }},
+                    ""text"": ""🚪 خروج از حساب کاربری""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(msgLogout);
+
+            var texts = GetAllMessageTexts();
+            Assert.Contains(texts, t => t.Contains("خروج از حساب کاربری") && t.Contains("کاربر خروج تستی"));
+
+            // بررسی دکمه‌های تایید و انصراف در کارت شیشه‌ای
+            using var docConfirm = JsonDocument.Parse(_httpHandler.RequestBodies[^1]);
+            Assert.True(docConfirm.RootElement.TryGetProperty("reply_markup", out var rmConfirm));
+            Assert.True(rmConfirm.TryGetProperty("inline_keyboard", out var ikConfirm));
+            var cbList = new List<string>();
+            foreach (var row in ikConfirm.EnumerateArray())
+            {
+                foreach (var btn in row.EnumerateArray())
+                {
+                    if (btn.TryGetProperty("callback_data", out var cd)) cbList.Add(cd.GetString() ?? "");
+                }
+            }
+            Assert.Contains("auth_logout_confirm", cbList);
+            Assert.Contains("auth_logout_cancel", cbList);
+
+            // ۲. کاربر انصراف می‌دهد
+            var cbCancel = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_cancel_logout"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""logout_test_user"" }},
+                    ""message"": {{ ""message_id"": 202, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""auth_logout_cancel""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(cbCancel);
+
+            var userAfterCancel = await _context.Users.FindAsync("logout_test_user");
+            Assert.NotNull(userAfterCancel);
+            Assert.Equal(chatId, userAfterCancel.BaleChatId); // هنوز متصل است
+
+            // ۳. کاربر تایید خروج را می‌زند
+            var cbConfirm = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_confirm_logout"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""logout_test_user"" }},
+                    ""message"": {{ ""message_id"": 203, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""auth_logout_confirm""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(cbConfirm);
+
+            // اطمینان از پاک شدن BaleChatId کاربر و قطع ارتباط با ربات
+            var userAfterLogout = await _context.Users.FindAsync("logout_test_user");
+            Assert.NotNull(userAfterLogout);
+            Assert.Null(userAfterLogout.BaleChatId);
+            Assert.Null(userAfterLogout.BaleUsername);
+
+            var lastTexts = GetAllMessageTexts();
+            Assert.Contains(lastTexts, t => t.Contains("خروج از حساب کاربری با موفقیت انجام شد"));
+
+            // بررسی اینکه کیبورد منوی اصلی به حالت ثبت‌نام‌نشده برگشته است
+            using var lastDoc = JsonDocument.Parse(_httpHandler.RequestBodies[^1]);
+            Assert.True(lastDoc.RootElement.TryGetProperty("reply_markup", out var finalMarkup));
+            Assert.True(finalMarkup.TryGetProperty("keyboard", out var finalKb));
+            var finalBtns = new List<string>();
+            foreach (var row in finalKb.EnumerateArray())
+            {
+                foreach (var btn in row.EnumerateArray())
+                {
+                    if (btn.TryGetProperty("text", out var tProp)) finalBtns.Add(tProp.GetString() ?? "");
+                }
+            }
+            Assert.Contains(finalBtns, b => b.Contains("ورود / اتصال به حساب کاربری"));
+            Assert.DoesNotContain(finalBtns, b => b.Contains("خروج از حساب"));
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_Logout_WhenNotLoggedIn_WarnsUser()
+        {
+            var chatId = "12349988"; // کاربری در دیتابیس با این چت آیدی نیست
+
+            var msg = ParseJson($@"{{
+                ""message"": {{
+                    ""message_id"": 301,
+                    ""chat"": {{ ""id"": {chatId} }},
+                    ""text"": ""/logout""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(msg);
+
+            var texts = GetAllMessageTexts();
+            Assert.Contains(texts, t => t.Contains("شما در حال حاضر به هیچ حساب کاربری متصل نیستید"));
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_WalletCustomAmount_PromptsAndSendsBaleInvoice()
+        {
+            var chatId = "771122";
+            var prof = new Profile { FirstName = "کاربر شارژ", Lastname = "دلخواه" };
+            _context.Profiles.Add(prof);
+            await _context.SaveChangesAsync();
+
+            var user = new User
+            {
+                Username = "wallet_custom_user",
+                BaleChatId = chatId,
+                ProfileId = prof.Id,
+                Profile = prof,
+                Vallet = 1000000
+            };
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+
+            // ۱. کلیک روی دکمه شارژ با مبلغ دلخواه
+            var cbCustom = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_wallet_custom"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""wallet_custom_user"" }},
+                    ""message"": {{ ""message_id"": 401, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""wallet_charge_custom""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(cbCustom);
+
+            var state = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(state);
+            Assert.Equal("Wallet_CustomAmount", state.CurrentStep);
+
+            var texts = GetAllMessageTexts();
+            Assert.Contains(texts, t => t.Contains("ورود مبلغ دلخواه") && t.Contains("حداقل مبلغ"));
+
+            // ۲. ورود مبلغ نامعتبر کمتر از ۱۰ هزار ریال
+            var invalidMsg = ParseJson($@"{{
+                ""message"": {{
+                    ""message_id"": 402,
+                    ""chat"": {{ ""id"": {chatId} }},
+                    ""text"": ""5000""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(invalidMsg);
+
+            var invalidTexts = GetAllMessageTexts();
+            Assert.Contains(invalidTexts, t => t.Contains("مبلغ واردشده نامعتبر است"));
+
+            // استیت باید همچنان در Wallet_CustomAmount باقی بماند
+            var stateAfterInvalid = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(stateAfterInvalid);
+            Assert.Equal("Wallet_CustomAmount", stateAfterInvalid.CurrentStep);
+
+            // ۳. ورود مبلغ معتبر با ارقام فارسی و جداکننده هزارگان (۳,۵۰۰,۰۰۰ ریال)
+            var validMsg = ParseJson($@"{{
+                ""message"": {{
+                    ""message_id"": 403,
+                    ""chat"": {{ ""id"": {chatId} }},
+                    ""text"": ""۳,۵۰۰,۰۰۰ ریال""
+                }}
+            }}");
+            await _service.ProcessUpdateAsync(validMsg);
+
+            // استیت باید به None برگردد
+            var stateAfterValid = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(stateAfterValid);
+            Assert.Equal("None", stateAfterValid.CurrentStep);
+
+            // تراکنش با مبلغ ۳۵۰۰۰۰۰ ریال باید در دیتابیس ثبت شده باشد
+            var tx = await _context.Transactions.FirstOrDefaultAsync(t => t.CustomerUsername == "wallet_custom_user");
+            Assert.NotNull(tx);
+            Assert.Equal(3500000, tx.Price);
+
+            // فاکتور بله باید با مبلغ ۳۵۰۰۰۰۰ به کاربر ارسال شده باشد
+            Assert.True(_httpHandler.Requests.Count > 0);
+            var invoiceReq = _httpHandler.Requests.Find(r => r.RequestUri != null && r.RequestUri.ToString().Contains("sendInvoice"));
+            Assert.NotNull(invoiceReq);
+            Assert.Contains(_httpHandler.RequestBodies, b => b.Contains("3500000") && b.Contains($"WALLET_{tx.Id}_3500000"));
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_InvWizard_Send_ImmediatelyResetsState_ReturnsToMainMenu_And_SetsBidTinbProfile()
+        {
+            var chatId = "88776655";
+            var profile = new Profile
+            {
+                FirstName = "پروفایل تست ویزارد",
+                TinCode = "10103030303",
+                MemoryId = "MEM_WIZ_SEND",
+                PrivateKey = "MOCK_KEY"
+            };
+            _context.Profiles.Add(profile);
+            await _context.SaveChangesAsync();
+
+            var user = new User
+            {
+                Username = "wiz_full_sender",
+                Role = "user",
+                BaleChatId = chatId,
+                ProfileId = profile.Id,
+                Profile = profile,
+                ExpireDate = DateTime.Now.AddDays(30), // اشتراک فعال
+                Vallet = 500000
+            };
+            _context.Users.Add(user);
+
+            var mu = new MeasureUnit { Code = "162", Title = "کیلوگرم" };
+            _context.MeasureUnits.Add(mu);
+
+            var state = new BaleUserState
+            {
+                ChatId = chatId,
+                Username = user.Username,
+                CurrentStep = "InvWiz_Confirm",
+                StateDataJson = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+                {
+                    ["BuyerType"] = "individual",
+                    ["BuyerId"] = "0012345678",
+                    ["BuyerTin"] = "0012345678",
+                    ["InvoiceDate"] = "1403/08/15",
+                    ["InvoicePattern"] = "4", // قرارداد پیمانکاری
+                    ["ItemCode"] = "2720000123456",
+                    ["ItemTitle"] = "خدمات تست نرم‌افزاری",
+                    ["ItemMu"] = "162",
+                    ["Am"] = "3",
+                    ["Fee"] = "150000",
+                    ["ItemVat"] = "10",
+                    ["CheckoutType"] = "1"
+                }),
+                LastUpdated = DateTime.Now
+            };
+            _context.BaleUserStates.Add(state);
+            await _context.SaveChangesAsync();
+
+            Invoices.Models.Invoice? capturedInvoice = null;
+            var senderMock = new Mock<IInvoiceSenderService>();
+            senderMock.Setup(s => s.SendInvoice(It.IsAny<Invoices.Models.Invoice>()))
+                .Callback<Invoices.Models.Invoice>(inv => capturedInvoice = inv)
+                .Returns(new InvoiceApiHelperResponse("TAXID12345678901234567", InvoiceStatus.موفق, "REF_123", "UID_123", "موفق"));
+
+            var botService = new BaleUserBotService(
+                _context,
+                _settingsServiceMock.Object,
+                _adminNotificationServiceMock.Object,
+                _httpClientFactoryMock.Object,
+                _activityLoggerMock.Object,
+                _loggerMock.Object,
+                invoiceSender: senderMock.Object);
+
+            var cbSend = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_wiz_send_full"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""wiz_full_sender"" }},
+                    ""message"": {{ ""message_id"": 501, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_wiz_send""
+                }}
+            }}");
+
+            await botService.ProcessUpdateAsync(cbSend);
+
+            // ۱. بررسی ریست فوری استیت ویزارد
+            var updatedState = await _context.BaleUserStates.FindAsync(chatId);
+            Assert.NotNull(updatedState);
+            Assert.Equal("None", updatedState.CurrentStep);
+            Assert.Null(updatedState.StateDataJson);
+
+            // ۲. بررسی پیام‌های ارسالی به کاربر (پیام صف با کیبورد منوی اصلی و سپس پیام موفقیت مودیان)
+            var texts = GetAllMessageTexts();
+            Assert.Contains(texts, t => t.Contains("در صف ارسال به سامانه مودیان قرار گرفت"));
+            Assert.Contains(texts, t => t.Contains("با موفقیت به سامانه مودیان ارسال شد") && t.Contains("TAXID12345678901234567"));
+
+            // ۳. بررسی فیلدهای فاکتور ارسال‌شده به سرویس مودیان
+            Assert.NotNull(capturedInvoice);
+            Assert.Equal(profile.Id, capturedInvoice.ProfileId);
+            Assert.NotNull(capturedInvoice.Profile);
+            Assert.Equal(profile.Id, capturedInvoice.Profile.Id);
+            Assert.Equal("0012345678", capturedInvoice.Bid);
+            Assert.Equal("0012345678", capturedInvoice.Tinb);
+            Assert.Equal(InvoicePattern.قرارداد_پیمانکاری, capturedInvoice.Inp);
+            Assert.Equal("1403/08/15", capturedInvoice.InvoiceDate);
+            Assert.NotNull(capturedInvoice.Indatim);
+            Assert.Equal(InvoiceStatus.موفق, capturedInvoice.Status);
+            Assert.Equal("TAXID12345678901234567", capturedInvoice.Taxid);
+
+            // ۴. بررسی دیتابیس
+            var dbInvoice = await _context.Invoices.FirstOrDefaultAsync(i => i.Taxid == "TAXID12345678901234567");
+            Assert.NotNull(dbInvoice);
+            Assert.Equal("0012345678", dbInvoice.Bid);
+            Assert.Equal("0012345678", dbInvoice.Tinb);
+            Assert.Equal(InvoicePattern.قرارداد_پیمانکاری, dbInvoice.Inp);
+            Assert.Equal("1403/08/15", dbInvoice.InvoiceDate);
+        }
+
+        [Fact]
+        public async Task ProcessUpdateAsync_SendExcelDraftInvoices_ImmediatelyReturnsToMainMenu_And_SendsInvoices()
+        {
+            var chatId = "88776644";
+            var profile = new Profile
+            {
+                FirstName = "پروفایل اکسل",
+                TinCode = "10104040404",
+                MemoryId = "MEM_EXCEL_SEND",
+                PrivateKey = "MOCK_KEY"
+            };
+            _context.Profiles.Add(profile);
+            await _context.SaveChangesAsync();
+
+            var user = new User
+            {
+                Username = "excel_draft_sender",
+                Role = "user",
+                BaleChatId = chatId,
+                ProfileId = profile.Id,
+                Profile = profile,
+                ExpireDate = DateTime.Now.AddDays(30),
+                Vallet = 500000
+            };
+            _context.Users.Add(user);
+
+            var draft1 = new Invoices.Models.Invoice
+            {
+                Sender = user.Username,
+                ProfileId = profile.Id,
+                Profile = profile,
+                Tins = profile.TinCode,
+                Draft = true,
+                Status = InvoiceStatus.در_انتظار_ارسال,
+                InvoiceDate = "1403/08/14",
+                Ins = InvoiceTopic.اصلی,
+                Inp = InvoicePattern.فروش,
+                Inty = InvoiceType.نوع_اول,
+                Setm = CheckoutType.نقدی
+            };
+            var draft2 = new Invoices.Models.Invoice
+            {
+                Sender = user.Username,
+                ProfileId = profile.Id,
+                Profile = profile,
+                Tins = profile.TinCode,
+                Draft = true,
+                Status = InvoiceStatus.در_انتظار_ارسال,
+                InvoiceDate = "1403/08/14",
+                Ins = InvoiceTopic.اصلی,
+                Inp = InvoicePattern.فروش,
+                Inty = InvoiceType.نوع_اول,
+                Setm = CheckoutType.نقدی
+            };
+            await _context.Invoices.AddRangeAsync(draft1, draft2);
+            await _context.SaveChangesAsync();
+
+            var sentCount = 0;
+            var senderMock = new Mock<IInvoiceSenderService>();
+            senderMock.Setup(s => s.SendInvoice(It.IsAny<Invoices.Models.Invoice>()))
+                .Callback<Invoices.Models.Invoice>(inv => sentCount++)
+                .Returns(new InvoiceApiHelperResponse("TAXID_BATCH_123", InvoiceStatus.موفق, "REF_B", "UID_B", "موفق"));
+
+            var botService = new BaleUserBotService(
+                _context,
+                _settingsServiceMock.Object,
+                _adminNotificationServiceMock.Object,
+                _httpClientFactoryMock.Object,
+                _activityLoggerMock.Object,
+                _loggerMock.Object,
+                invoiceSender: senderMock.Object);
+
+            var cbConfirm = ParseJson($@"{{
+                ""callback_query"": {{
+                    ""id"": ""cb_excel_confirm_test"",
+                    ""from"": {{ ""id"": {chatId}, ""username"": ""excel_draft_sender"" }},
+                    ""message"": {{ ""message_id"": 601, ""chat"": {{ ""id"": {chatId} }} }},
+                    ""data"": ""inv_excel_confirm""
+                }}
+            }}");
+
+            await botService.ProcessUpdateAsync(cbConfirm);
+
+            var texts = GetAllMessageTexts();
+            Assert.Contains(texts, t => t.Contains("تعداد 2 صورتحساب در صف ارسال به سامانه مودیان قرار گرفت"));
+            Assert.Contains(texts, t => t.Contains("گزارش ارسال فاکتورها به سامانه مودیان") && t.Contains("صورتحساب‌های موفق:") && t.Contains("2 عدد"));
+
+            Assert.Equal(2, sentCount);
+            var updatedDrafts = await _context.Invoices.Where(i => i.Sender == user.Username).ToListAsync();
+            Assert.All(updatedDrafts, d => Assert.False(d.Draft));
+            Assert.All(updatedDrafts, d => Assert.Equal(InvoiceStatus.موفق, d.Status));
+        }
+
+        [Fact]
+        public void InvoiceApiHelper_GetLastStatus_WhenUidAndRefAreEmpty_ReturnsInformativeResponse()
+        {
+            var profile = new Profile { MemoryId = "MEM_TEST", PrivateKey = "KEY_TEST" };
+            var invoice = new Invoices.Models.Invoice
+            {
+                Id = 27133,
+                Profile = profile,
+                UID = null,
+                ReferenceCode = "",
+                Status = InvoiceStatus.در_انتظار_ارسال,
+                Taxid = "TAXID_TEST_EMPTY_REF"
+            };
+
+            var helper = new TaxCollectData.InvoiceApiHelper();
+            var response = helper.GetLastStatus(invoice);
+
+            Assert.NotNull(response);
+            Assert.Equal(InvoiceStatus.در_انتظار_ارسال, response.Status);
+            Assert.Contains("صورتحساب هنوز به سامانه مودیان ارسال نشده است", response.Response);
+        }
+
+        [Fact]
+        public void InvoiceApiHelper_GetLastStatus_WhenProfileIsNull_ReturnsWarningResponse()
+        {
+            var invoice = new Invoices.Models.Invoice
+            {
+                Id = 27133,
+                Profile = null,
+                UID = "SOME_UID",
+                ReferenceCode = "SOME_REF",
+                Status = InvoiceStatus.در_حال_ارسال,
+                Taxid = "TAXID_NO_PROFILE"
+            };
+
+            var helper = new TaxCollectData.InvoiceApiHelper();
+            var response = helper.GetLastStatus(invoice);
+
+            Assert.NotNull(response);
+            Assert.Equal(InvoiceStatus.در_حال_ارسال, response.Status);
+            Assert.Contains("پروفایل صادرکننده مشخص نیست", response.Response);
         }
     }
 }

@@ -222,23 +222,41 @@ namespace TaxCollectData
         }
         public InvoiceApiHelperResponse? GetLastStatus(Invoices.Models.Invoice invoice)
         {
-            initApi(invoice.Profile.MemoryId, invoice.Profile.PrivateKey);
-            _api.GetServerInformation();
-            getToken();
-            var inquiryResultModels = new List<InquiryResultModel>();
-            if (invoice.UID != null)
+            if (invoice?.Profile == null)
             {
-                var uidfiscal = new UidAndFiscalId(invoice.UID, invoice.Profile.MemoryId);
-                inquiryResultModels = _api.InquiryByUidAndFiscalId(new() { uidfiscal });
+                return new InvoiceApiHelperResponse(invoice?.Taxid, invoice?.Status ?? InvoiceStatus.خطا_در_ارسال, invoice?.ReferenceCode, invoice?.UID, "پروفایل صادرکننده مشخص نیست.");
             }
-            else
-                inquiryResultModels = _api.InquiryByReferenceId(new() { invoice.ReferenceCode });
-            var message = inquiryResultModels.First().Data?.ToString();
-            //inquiryResultModels = _api.InquiryByTimeRange("14021001", "14021015");
-            InvoiceStatus? status = null;
-            if (inquiryResultModels.Count > 0)
+
+            if (string.IsNullOrWhiteSpace(invoice.UID) && string.IsNullOrWhiteSpace(invoice.ReferenceCode))
             {
-                switch (inquiryResultModels[0].Status.ToLower())
+                return new InvoiceApiHelperResponse(invoice.Taxid, invoice.Status ?? InvoiceStatus.در_انتظار_ارسال, null, null, "صورتحساب هنوز به سامانه مودیان ارسال نشده است و فاقد شناسه رهگیری می‌باشد.");
+            }
+
+            try
+            {
+                initApi(invoice.Profile.MemoryId, invoice.Profile.PrivateKey);
+                _api.GetServerInformation();
+                getToken();
+                var inquiryResultModels = new List<InquiryResultModel>();
+                if (!string.IsNullOrWhiteSpace(invoice.UID))
+                {
+                    var uidfiscal = new UidAndFiscalId(invoice.UID, invoice.Profile.MemoryId);
+                    inquiryResultModels = _api.InquiryByUidAndFiscalId(new() { uidfiscal });
+                }
+                else if (!string.IsNullOrWhiteSpace(invoice.ReferenceCode))
+                {
+                    inquiryResultModels = _api.InquiryByReferenceId(new() { invoice.ReferenceCode });
+                }
+
+                if (inquiryResultModels == null || inquiryResultModels.Count == 0)
+                {
+                    return new InvoiceApiHelperResponse(invoice.Taxid, invoice.Status ?? InvoiceStatus.خطا_در_ارسال, invoice.ReferenceCode, invoice.UID, "پاسخی از سامانه مودیان دریافت نشد.");
+                }
+
+                var message = inquiryResultModels[0].Data?.ToString();
+                InvoiceStatus status = invoice.Status ?? InvoiceStatus.در_حال_ارسال;
+                var rawStatus = inquiryResultModels[0].Status?.ToLower() ?? "";
+                switch (rawStatus)
                 {
                     case "success":
                         status = InvoiceStatus.موفق;
@@ -256,8 +274,13 @@ namespace TaxCollectData
                         status = InvoiceStatus.پیدا_نشد;
                         break;
                 }
+                return new InvoiceApiHelperResponse(invoice.Taxid, status, invoice.ReferenceCode, invoice.UID, message);
             }
-            return new InvoiceApiHelperResponse(null, status.Value, invoice.ReferenceCode, invoice.UID, message);
+            catch (Exception ex)
+            {
+                _logger?.LogError(ex, "خطا در استعلام آخرین وضعیت صورتحساب {InvoiceId}", invoice.Id);
+                return new InvoiceApiHelperResponse(invoice.Taxid, invoice.Status ?? InvoiceStatus.خطا_در_ارسال, invoice.ReferenceCode, invoice.UID, "خطا در استعلام از سامانه مودیان: " + ex.Message);
+            }
         }
 
         private InvoiceDto create_invoice(Invoices.Models.Invoice invoice)
